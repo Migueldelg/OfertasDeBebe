@@ -1,0 +1,10 @@
+*.log
+*.log.*
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+venv/
+.venv/
+
+# posted_bebe_deals.json NO está aquí — se versiona para persistir estado
