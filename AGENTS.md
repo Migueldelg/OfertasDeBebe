@@ -203,23 +203,26 @@ Si Amazon cambia su HTML, estos son los selectores a revisar en `extraer_product
 ## Testing / Reseteo Manual
 
 ```bash
-# Ejecutar una vez y ver output
-python3 amazon_bebe_ofertas.py
+# Lanzar run manual en GitHub Actions
+gh workflow run "Ofertas de Bebé"
+gh run watch                  # Seguir progreso en tiempo real
+gh run view --log-failed      # Ver logs si falla
 
-# Ver log en tiempo real
-tail -f ofertas_bebe.log
+# Ejecutar localmente (requiere TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en entorno)
+python3 amazon_bebe_ofertas.py
 
 # Resetear todo el estado (vuelve a publicar desde cero)
 rm posted_bebe_deals.json
+git add posted_bebe_deals.json && git commit -m "chore: resetear estado" && git push
 
-# Resetear solo el límite semanal de una categoría (editar JSON y borrar su entrada en _categorias_semanales)
-# Resetear categorías/títulos recientes (editar JSON y borrar _ultimas_categorias / _ultimos_titulos)
+# Resetear solo el límite semanal de una categoría: editar JSON y borrar su entrada en _categorias_semanales
+# Resetear categorías/títulos recientes: editar JSON y borrar _ultimas_categorias / _ultimos_titulos
 ```
 
 ## Dependencias
 
 ```bash
-pip install requests beautifulsoup4
+pip install -r requirements.txt
 ```
 
 Sin base de datos, sin framework web, sin tests automatizados.

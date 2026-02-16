@@ -22,7 +22,7 @@ CATEGORIAS_BEBE                    # Línea ~62 - Categorías a buscar
 CATEGORIAS_VERIFICAR_TITULOS       # Línea ~56 - Evitar títulos similares
 CATEGORIAS_LIMITE_SEMANAL          # Línea ~59 - Solo 1x por semana
 MARCAS_PRIORITARIAS                # Línea ~65 - Marcas en igualdad de descuento
-TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID  # Línea ~23-24 - Credenciales
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID  # Línea ~61-62 - Leen de env vars / GitHub Secrets
 ```
 
 ---
@@ -60,9 +60,12 @@ De todas las mejores:
 
 ## Ejecución
 
+El bot corre en **GitHub Actions** cada 30 minutos automáticamente.
+
 ```bash
-python3 amazon_bebe_ofertas.py              # Una vez (para cron)
-python3 amazon_bebe_ofertas.py --continuo   # Cada 15 min
+gh workflow run "Ofertas de Bebé"   # Lanzar manualmente
+gh run watch                        # Ver progreso
+python3 amazon_bebe_ofertas.py      # Ejecutar local (requiere env vars)
 ```
 
 ---
@@ -74,9 +77,10 @@ python3 amazon_bebe_ofertas.py --continuo   # Cada 15 min
 | Añadir categoría | `CATEGORIAS_BEBE` línea ~62 |
 | Cambiar marcas prioritarias | `MARCAS_PRIORITARIAS` línea ~65 |
 | Cambiar ventana anti-duplicados | `timedelta(hours=48)` en `load_posted_deals()` |
-| Cambiar frecuencia continua | `time.sleep(900)` en `main()` |
+| Cambiar frecuencia del schedule | `cron:` en `.github/workflows/ofertas.yml` |
 | Cambiar formato Telegram | Función `format_telegram_message()` |
 | Cambiar selectores CSS | Función `extraer_productos_busqueda()` |
+| Credenciales Telegram | GitHub Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 
 ---
 

@@ -1,125 +1,54 @@
-# 🍼 Ofertas de Bebé - Bot Automático de Amazon → Telegram
+# Ofertas de Bebé - Bot Automático de Amazon → Telegram
 
 Bot que busca automáticamente las **mejores ofertas de productos de bebé** en Amazon.es y las publica en el canal de Telegram [@ofertasparaelbebe](https://t.me/ofertasparaelbebe).
+
+Corre en **GitHub Actions** cada 30 minutos, sin necesidad de servidor propio.
 
 ---
 
 ## ¿Cómo funciona?
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  1. El bot busca ofertas en Amazon en 12 categorías        │
-│     (Pañales, Toallitas, Cremas, Leche, Juguetes, etc.)   │
-└─────────────────────────────────────────────────────────────┘
+1. Busca ofertas en Amazon en 12 categorías (Pañales, Toallitas, Cremas, Leche, Juguetes, etc.)
                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│  2. De cada categoría, selecciona la mejor oferta          │
-│     (mayor descuento, valoraciones altas, muchas ventas)   │
-└─────────────────────────────────────────────────────────────┘
+2. De cada categoría, selecciona la mejor oferta (mayor descuento, valoraciones altas)
                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│  3. De todas las mejores, elige la de MAYOR DESCUENTO      │
-│     (con prioridad a marcas: Dodot, Suavinex, etc.)        │
-└─────────────────────────────────────────────────────────────┘
+3. De todas las mejores, elige la de MAYOR DESCUENTO (con prioridad a marcas conocidas)
                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│  4. Publica 1 oferta en Telegram con foto y enlace         │
-└─────────────────────────────────────────────────────────────┘
+4. Publica 1 oferta en Telegram con foto y enlace
 ```
 
 ---
 
-## Sistema Anti-Repetición (Evita lo Mismo una y Otra Vez)
+## Sistema Anti-Repetición
 
-El bot es inteligente y **evita publicar lo mismo** mediante 4 filtros:
+El bot evita publicar lo mismo mediante 4 filtros:
 
-### 🔒 Anti-Duplicado (48 horas)
-- Una vez publica un producto, **no lo vuelve a publicar en 48 horas**
-
-### 🔄 Anti-Categoría Repetida
-- Guarda las **últimas 4 categorías publicadas** y las evita si hay otras opciones
-- **Excepción:** Pañales y Toallitas pueden repetirse (son compra frecuente)
-- Si todas las opciones son recientes, publica la mejor igualmente
-
-### 📄 Anti-Título Similar (Algunas Categorías)
-- En Chupetes y Juguetes, evita títulos similares
-- Ejemplo: Si publicó "Chupete Philips Pack 2", no publicará "Chupete Philips Pack 3"
-
-### 📅 Límite Semanal (Algunas Categorías)
-- Tronas, Cámaras de seguridad y Chupetes: **solo 1 oferta por semana**
-- Productos que no son de compra recurrente
+- **Anti-ASIN (48h):** No repite el mismo producto en 48 horas
+- **Anti-Categoría:** Evita las últimas 4 categorías publicadas (excepto Pañales/Toallitas)
+- **Anti-Título Similar:** En Chupetes y Juguetes, evita títulos con >50% palabras comunes
+- **Límite Semanal:** Tronas, Cámaras de seguridad y Chupetes: solo 1 oferta por semana
 
 ---
 
-## Prioridad de Marcas (Lo Nuevo 🎉)
+## Prioridad de Marcas
 
-Cuando dos productos tienen el **MISMO descuento**, el bot prefiere estas marcas:
-
-- 🟡 **Dodot**
-- 🟡 **Suavinex**
-- 🟡 **Baby Sebamed**
-- 🟡 **Mustela**
-- 🟡 **Waterwipes**
-
-**Ejemplo:** Si hay 2 ofertas con 30% descuento (una de Dodot, otra de marca desconocida), se publica la de Dodot.
-
----
-
-## Cómo Ejecutar
-
-### Ejecución única (recomendado para cron/scheduler)
-```bash
-python3 amazon_bebe_ofertas.py
-```
-
-### Ejecución continua (cada 15 minutos)
-```bash
-python3 amazon_bebe_ofertas.py --continuo
-```
-Presiona `Ctrl+C` para detener.
-
----
-
-## Qué Necesitas para Empezar
-
-1. **Python 3** instalado
-2. **Librerías Python:**
-   ```bash
-   pip install requests beautifulsoup4
-   ```
-3. **Token de Telegram Bot** (crea uno en @BotFather)
-4. **ID del canal de Telegram** (ejemplo: `-1003703867125`)
+Cuando dos productos tienen el **mismo descuento**, el bot prefiere: Dodot, Suavinex, Baby Sebamed, Mustela, Waterwipes.
 
 ---
 
 ## Configuración
 
-Todas las configuraciones están en el archivo `amazon_bebe_ofertas.py`:
+Todas las configuraciones están en `amazon_bebe_ofertas.py`:
 
-### Cambiar marcas prioritarias
-```python
-MARCAS_PRIORITARIAS = ["dodot", "suavinex", "baby sebamed", "mustela", "waterwipes"]
-```
+| Constante | Qué controla |
+|-----------|-------------|
+| `CATEGORIAS_BEBE` (~línea 62) | Categorías a buscar |
+| `MARCAS_PRIORITARIAS` (~línea 65) | Marcas preferidas en igualdad de descuento |
+| `CATEGORIAS_VERIFICAR_TITULOS` (~línea 56) | Categorías con anti-título-similar |
+| `CATEGORIAS_LIMITE_SEMANAL` (~línea 59) | Categorías con límite de 1/semana |
 
-### Añadir una categoría nueva
-```python
-CATEGORIAS_BEBE = [
-    {"nombre": "NombreCategoría", "emoji": "🆕", "url": "/s?k=termino+busqueda"},
-    # ... más categorías
-]
-```
-
-### Activar verificación de títulos en una categoría
-```python
-CATEGORIAS_VERIFICAR_TITULOS = ["Chupetes", "Juguetes", "Biberones"]
-```
-
-### Activar límite semanal en una categoría
-```python
-CATEGORIAS_LIMITE_SEMANAL = ["Tronas", "Camaras seguridad", "Chupetes"]
-```
-
-Para cambios más técnicos, ver **AGENTS.md** (referencia técnica).
+Para detalles técnicos, ver **AGENTS.md**.
 
 ---
 
@@ -127,62 +56,60 @@ Para cambios más técnicos, ver **AGENTS.md** (referencia técnica).
 
 ```
 OfertasDeBebe/
-├── amazon_bebe_ofertas.py        ← El bot (único archivo que importa)
-├── posted_bebe_deals.json        ← Estado (se crea automáticamente)
-├── ofertas_bebe.log              ← Logs de ejecución
-├── README.md                     ← Este archivo (guía general)
+├── amazon_bebe_ofertas.py        ← El bot
+├── posted_bebe_deals.json        ← Estado anti-duplicados (versionado para persistir entre runs)
+├── requirements.txt              ← Dependencias Python
+├── .github/workflows/ofertas.yml ← Workflow de GitHub Actions (cada 30 min)
+├── .gitignore
+├── README.md
 ├── AGENTS.md                     ← Referencia técnica para IA
-├── CLAUDE.md                     ← Para Claude AI
-└── Como_usar_Ofertas_de_bebe.txt ← Manual antiguo
+└── CLAUDE.md                     ← Referencia rápida para Claude
 ```
 
 ---
 
-## Detalles Técnicos
+## GitHub Actions
 
-- **Sin base de datos:** usa JSON local
-- **Sin framework web:** solo Python + BeautifulSoup
-- **1 oferta por ejecución:** para controlar frecuencia
-- **Delays automáticos:** entre requests a Amazon (anti-bot)
-- **Fallback automático:** si falla envío con foto, envía solo texto
+El bot corre automáticamente en GitHub Actions cada 30 minutos. Los secretos `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` están configurados en *Settings → Secrets and variables → Actions*.
 
----
+Al final de cada run, si se publicó una oferta nueva, el workflow hace commit de `posted_bebe_deals.json` de vuelta al repo para persistir el estado.
 
-## Precauciones
+Los logs de cada run están disponibles en la pestaña *Actions* del repo durante 90 días.
 
-⚠️ **No hagas esto:**
-- Eliminar los delays entre requests (Amazon te bloqueará)
-- Hardcodear tokens en el código (usa variables de entorno)
-- Cambiar selectores CSS sin saber qué haces (Amazon cambia su HTML frecuentemente)
+### Ejecución manual
+
+```bash
+gh workflow run "Ofertas de Bebé"
+gh run watch  # Seguir progreso en tiempo real
+```
 
 ---
 
 ## Solución de Problemas
 
 ### El bot no encuentra ofertas
-- Revisar que las URLs de búsqueda en `CATEGORIAS_BEBE` sean válidas
-- Verificar que Amazon no haya bloqueado las requests
+- Revisar que las URLs en `CATEGORIAS_BEBE` sean válidas en Amazon.es
+- Comprobar si Amazon ha cambiado los selectores CSS (ver AGENTS.md)
 
-### Se paró de repente
-- Ver logs: `tail -f ofertas_bebe.log`
-- Revisar que las credenciales de Telegram sean válidas
+### No llega mensaje a Telegram
+- Verificar que los secrets `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` están correctamente configurados
+- Revisar los logs del último run en GitHub Actions
 
-### Quiero resetear todo
+### Resetear el estado
 ```bash
-rm posted_bebe_deals.json  # Borra el estado de todo
+# Borrar el estado: el bot volverá a publicar desde cero
+rm posted_bebe_deals.json
+git add posted_bebe_deals.json && git commit -m "chore: resetear estado" && git push
 ```
 
 ---
 
-## Para Información Técnica Detallada
+## Precauciones
 
-👉 Ver **AGENTS.md** para:
-- Estructura de datos interna
-- Lógica de selección de ofertas
-- Selectores CSS
-- Cómo modificar criterios de ordenamiento
-- Funciones y sus líneas exactas
+- No eliminar los delays entre requests (Amazon bloqueará las peticiones)
+- No cambiar selectores CSS sin saber qué haces (Amazon cambia su HTML frecuentemente)
+- Las credenciales van en GitHub Secrets, nunca en el código
 
 ---
 
-*Bot desarrollado para automatizar la búsqueda de las mejores ofertas de bebé. Publicado en [@ofertasparaelbebe](https://t.me/ofertasparaelbebe).*
+*Publicado en [@ofertasparaelbebe](https://t.me/ofertasparaelbebe).*
