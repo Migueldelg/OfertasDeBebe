@@ -53,11 +53,7 @@ setup_logging()
 log = logging.getLogger(__name__)
 
 # --- Configuracion de Telegram ---
-# Bot y canal antiguos (juegos en oferta):
-# TELEGRAM_BOT_TOKEN_OLD = '8467408438:AAHaNBPQi-pVop4MXINo5IL4cgy2ewi0OCI'
-# TELEGRAM_CHAT_ID_OLD = '-1003803431246'
-
-# Bot y canal nuevos (ofertas bebe):
+# Bot y canal (ofertas bebe):
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
