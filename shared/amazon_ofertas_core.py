@@ -230,7 +230,8 @@ def send_telegram_message(message, token, chat_id):
         'disable_web_page_preview': False
     }
     try:
-        response = requests.post(url, json=payload)
+        # Usar data en lugar de json para mayor compatibilidad con Telegram
+        response = requests.post(url, data=payload)
         response.raise_for_status()
         log.info("Mensaje enviado a Telegram correctamente (solo texto)")
         return True
@@ -249,7 +250,8 @@ def send_telegram_photo(photo_url, caption, token, chat_id):
         'parse_mode': 'HTML'
     }
     try:
-        response = requests.post(url, json=payload)
+        # Usar data en lugar de json para mayor compatibilidad con Telegram
+        response = requests.post(url, data=payload)
         response.raise_for_status()
         log.info("Mensaje enviado a Telegram correctamente (con foto)")
         return True
@@ -286,7 +288,8 @@ def format_telegram_message(producto, categoria):
     else:
         message += f"💰 Precio: <b>{precio}</b>\n"
 
-    message += f"\n🛒 <a href='{url}'>Ver en Amazon</a>"
+    # Usar comillas dobles en atributos HTML
+    message += f'\n🛒 <a href="{url}">Ver en Amazon</a>'
 
     return message
 
