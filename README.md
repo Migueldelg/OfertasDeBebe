@@ -125,8 +125,10 @@ cp .env.sample .env
 ```
 
 ```bash
-export TELEGRAM_BOT_TOKEN=tu_token_aqui
+export TELEGRAM_BOT_TOKEN=tu_token_aqui       # Bot y canal de producción
 export TELEGRAM_CHAT_ID=tu_chat_id_aqui
+export DEV_TELEGRAM_BOT_TOKEN=tu_token_dev    # Bot y canal de pruebas (para --dev)
+export DEV_TELEGRAM_CHAT_ID=tu_chat_id_dev
 ```
 
 **¿Cómo obtener estos valores?**
@@ -136,8 +138,11 @@ export TELEGRAM_CHAT_ID=tu_chat_id_aqui
 ### 3. Ejecutar
 
 ```bash
-# Cargar variables y ejecutar
+# Producción: publica en el canal real y actualiza el JSON de estado
 source .env && python3 amazon_bebe_ofertas.py
+
+# Desarrollo: publica en el canal de pruebas; el JSON de prod no se toca
+source .env && python3 amazon_bebe_ofertas.py --dev
 ```
 
 ### 4. Ejecutar los tests (sin necesidad de credenciales)

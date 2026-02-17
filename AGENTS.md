@@ -20,10 +20,15 @@ Todas en `amazon_bebe_ofertas.py`:
 
 | Constante | Línea | Descripción |
 |-----------|-------|-------------|
-| `CATEGORIAS_BEBE` | ~52 | Lista de categorías a buscar |
-| `CATEGORIAS_VERIFICAR_TITULOS` | ~43 | Categorías donde se comparan títulos para evitar similares |
-| `CATEGORIAS_LIMITE_SEMANAL` | ~46 | Categorías que solo se publican una vez por semana (Tronas, Cámaras seguridad, Chupetes, Vajilla bebe) |
-| `MARCAS_PRIORITARIAS` | ~49 | Marcas preferidas cuando hay igualdad de descuento |
+| `TELEGRAM_BOT_TOKEN` | ~35 | Token del bot de producción (env var) |
+| `TELEGRAM_CHAT_ID` | ~36 | Chat ID del canal de producción (env var) |
+| `DEV_TELEGRAM_BOT_TOKEN` | ~39 | Token del bot de desarrollo (env var, mismo que proyecto relases) |
+| `DEV_TELEGRAM_CHAT_ID` | ~40 | Chat ID del canal de pruebas (env var, mismo que proyecto relases) |
+| `DEV_MODE` | ~43 | Flag booleano; `True` cuando se ejecuta con `--dev` |
+| `CATEGORIAS_BEBE` | ~67 | Lista de categorías a buscar |
+| `CATEGORIAS_VERIFICAR_TITULOS` | ~58 | Categorías donde se comparan títulos para evitar similares |
+| `CATEGORIAS_LIMITE_SEMANAL` | ~61 | Categorías que solo se publican una vez por semana (Tronas, Cámaras seguridad, Chupetes, Vajilla bebe) |
+| `MARCAS_PRIORITARIAS` | ~64 | Marcas preferidas cuando hay igualdad de descuento |
 
 ---
 
@@ -174,12 +179,14 @@ Parámetro `umbral` en `titulos_similares()` del core (por defecto `0.5` = 50%).
 
 | Función | Descripción | Línea |
 |---------|-------------|-------|
-| `obtener_prioridad_marca(titulo)` | Wrapper: llama al core con `MARCAS_PRIORITARIAS` de bebé | ~72 |
-| `send_telegram_message(message)` | Wrapper: llama al core con token/chat_id de bebé | ~76 |
-| `send_telegram_photo(photo_url, caption)` | Wrapper: llama al core con token/chat_id de bebé | ~81 |
-| `load_posted_deals()` | Wrapper: llama al core con `POSTED_BEBE_DEALS_FILE` | ~86 |
-| `save_posted_deals(deals_dict, ...)` | Wrapper: llama al core con `POSTED_BEBE_DEALS_FILE` | ~94 |
-| `buscar_y_publicar_ofertas()` | Lógica principal de selección y publicación | ~99 |
+| `_effective_token()` | Devuelve el token dev si `DEV_MODE`, si no el de prod | ~49 |
+| `_effective_chat_id()` | Devuelve el chat_id dev si `DEV_MODE`, si no el de prod | ~53 |
+| `obtener_prioridad_marca(titulo)` | Wrapper: llama al core con `MARCAS_PRIORITARIAS` de bebé | ~87 |
+| `send_telegram_message(message)` | Wrapper: llama al core con credenciales efectivas (prod o dev) | ~91 |
+| `send_telegram_photo(photo_url, caption)` | Wrapper: llama al core con credenciales efectivas (prod o dev) | ~96 |
+| `load_posted_deals()` | Wrapper: llama al core con `POSTED_BEBE_DEALS_FILE` | ~101 |
+| `save_posted_deals(deals_dict, ...)` | Wrapper: llama al core con `POSTED_BEBE_DEALS_FILE` | ~109 |
+| `buscar_y_publicar_ofertas()` | Lógica principal de selección y publicación | ~114 |
 
 ### `amazon_ofertas_core.py` (funciones genéricas)
 
@@ -242,6 +249,26 @@ pip install -r requirements-dev.txt
 
 Los tests cubren: funciones puras, I/O con mocks, parsing HTML y lógica de selección completa.
 
+## Modo Desarrollo (--dev)
+
+Ejecutar con `--dev` publica en el canal de pruebas compartido y **no modifica `posted_bebe_deals.json`**:
+
+| Comportamiento | Producción | Dev (`--dev`) |
+|----------------|------------|---------------|
+| Canal Telegram | `TELEGRAM_CHAT_ID` | `DEV_TELEGRAM_CHAT_ID` |
+| Bot token | `TELEGRAM_BOT_TOKEN` | `DEV_TELEGRAM_BOT_TOKEN` |
+| Lee historial JSON | Sí | No (historial vacío → no hay deduplicación) |
+| Escribe historial JSON | Sí | No (`posted_bebe_deals.json` intacto) |
+
+```bash
+# Ejecutar en dev (requiere las vars DEV_* en el entorno)
+source .env && python3 amazon_bebe_ofertas.py --dev
+```
+
+Las credenciales dev (`DEV_TELEGRAM_BOT_TOKEN`, `DEV_TELEGRAM_CHAT_ID`) están en `.env` y son las mismas que usa el proyecto `relases` para su canal de pruebas.
+
+---
+
 ## Testing / Reseteo Manual
 
 ```bash
@@ -250,8 +277,11 @@ gh workflow run "Ofertas de Bebé"
 gh run watch                  # Seguir progreso en tiempo real
 gh run view --log-failed      # Ver logs si falla
 
-# Ejecutar localmente (requiere TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en entorno)
-python3 amazon_bebe_ofertas.py
+# Ejecutar localmente en producción
+source .env && python3 amazon_bebe_ofertas.py
+
+# Ejecutar localmente en modo dev (no toca el JSON de prod)
+source .env && python3 amazon_bebe_ofertas.py --dev
 
 # Resetear todo el estado (vuelve a publicar desde cero)
 rm posted_bebe_deals.json

@@ -4,10 +4,10 @@ Script para obtener ofertas de productos de bebe de Amazon.es
 y publicarlas en Telegram
 """
 
+import argparse
 import time
 import os
 import logging
-import sys
 from datetime import datetime, timedelta
 
 from amazon_ofertas_core import (
@@ -31,12 +31,27 @@ setup_logging()
 log = logging.getLogger(__name__)
 
 # --- Configuracion de Telegram ---
-# Bot y canal (ofertas bebe):
+# Bot y canal (ofertas bebe) — produccion:
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+# Bot y canal — desarrollo (--dev):
+DEV_TELEGRAM_BOT_TOKEN = os.getenv('DEV_TELEGRAM_BOT_TOKEN')
+DEV_TELEGRAM_CHAT_ID = os.getenv('DEV_TELEGRAM_CHAT_ID')
+
+# Flag de modo dev (se activa via --dev en CLI)
+DEV_MODE = False
+
 # Archivo para guardar ofertas ya publicadas
 POSTED_BEBE_DEALS_FILE = "posted_bebe_deals.json"
+
+
+def _effective_token():
+    return DEV_TELEGRAM_BOT_TOKEN if DEV_MODE and DEV_TELEGRAM_BOT_TOKEN else TELEGRAM_BOT_TOKEN
+
+
+def _effective_chat_id():
+    return DEV_TELEGRAM_CHAT_ID if DEV_MODE and DEV_TELEGRAM_CHAT_ID else TELEGRAM_CHAT_ID
 
 # Categorias que requieren verificacion de titulos similares
 # (para evitar publicar el mismo tipo de producto repetidamente)
@@ -75,12 +90,12 @@ def obtener_prioridad_marca(titulo):
 
 def send_telegram_message(message):
     """Envia un mensaje al canal de Telegram de bebe."""
-    return _send_telegram_message_core(message, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+    return _send_telegram_message_core(message, _effective_token(), _effective_chat_id())
 
 
 def send_telegram_photo(photo_url, caption):
     """Envia una foto con caption al canal de Telegram de bebe."""
-    return _send_telegram_photo_core(photo_url, caption, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+    return _send_telegram_photo_core(photo_url, caption, _effective_token(), _effective_chat_id())
 
 
 def load_posted_deals():
@@ -101,20 +116,34 @@ def buscar_y_publicar_ofertas():
     Busca la mejor oferta de cada categoria y publica solo la que tenga
     mayor descuento de entre todas.
     """
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        log.error(
-            "Credenciales de Telegram no configuradas. "
-            "Establece las variables de entorno TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID."
-        )
+    if not _effective_token() or not _effective_chat_id():
+        if DEV_MODE:
+            log.error(
+                "DEV_MODE activo pero credenciales dev no configuradas. "
+                "Establece DEV_TELEGRAM_BOT_TOKEN y DEV_TELEGRAM_CHAT_ID."
+            )
+        else:
+            log.error(
+                "Credenciales de Telegram no configuradas. "
+                "Establece las variables de entorno TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID."
+            )
         return 0
 
     log.info("=" * 60)
-    log.info("INICIO - BUSCADOR DE OFERTAS DE BEBE | Amazon.es -> Telegram")
+    if DEV_MODE:
+        log.info("INICIO [DEV MODE] - BUSCADOR DE OFERTAS DE BEBE | Amazon.es -> Telegram (canal de pruebas)")
+    else:
+        log.info("INICIO - BUSCADOR DE OFERTAS DE BEBE | Amazon.es -> Telegram")
     log.info("Tag de afiliado: %s | Hora: %s", PARTNER_TAG, datetime.now().strftime('%d/%m/%Y %H:%M'))
     log.info("=" * 60)
 
     # Cargar ofertas ya publicadas (ultimas 48h), ultimas categorias y titulos
-    posted_deals, ultimas_categorias, ultimos_titulos, categorias_semanales = load_posted_deals()
+    # En DEV_MODE se ignora el historial para no contaminar el JSON de produccion
+    if DEV_MODE:
+        posted_deals, ultimas_categorias, ultimos_titulos, categorias_semanales = {}, [], [], {}
+        log.info("DEV_MODE: historial de publicaciones ignorado (posted_bebe_deals.json no se leerá ni escribirá)")
+    else:
+        posted_deals, ultimas_categorias, ultimos_titulos, categorias_semanales = load_posted_deals()
     posted_asins = set(posted_deals.keys())
 
     if ultimas_categorias:
@@ -333,7 +362,11 @@ def buscar_y_publicar_ofertas():
         log.error("Fallo al enviar a Telegram, no se guarda el ASIN en el historial")
 
     # Guardar ofertas publicadas, ultimas categorias y titulos
-    save_posted_deals(posted_deals, ultimas_categorias, ultimos_titulos, categorias_semanales)
+    # En DEV_MODE no se escribe para no contaminar el historial de produccion
+    if DEV_MODE:
+        log.info("DEV_MODE: historial no guardado (posted_bebe_deals.json sin cambios)")
+    else:
+        save_posted_deals(posted_deals, ultimas_categorias, ultimos_titulos, categorias_semanales)
 
     log.info("")
     log.info("=" * 60)
@@ -366,8 +399,13 @@ def main(modo_continuo=False):
 
 
 if __name__ == "__main__":
-    import sys
+    parser = argparse.ArgumentParser(description='Buscador de ofertas de bebe en Amazon.es')
+    parser.add_argument('--dev', action='store_true', help='Modo desarrollo: publica en canal de pruebas y no modifica el JSON de produccion')
+    parser.add_argument('--continuo', '-c', action='store_true', help='Ejecuta en bucle cada 15 minutos')
+    args = parser.parse_args()
 
-    # Si se pasa --continuo, ejecuta en bucle cada 15 minutos
-    modo_continuo = "--continuo" in sys.argv or "-c" in sys.argv
-    main(modo_continuo=modo_continuo)
+    if args.dev:
+        DEV_MODE = True
+        log.info("CLI: DEV_MODE activado (canal de pruebas, JSON de prod intacto)")
+
+    main(modo_continuo=args.continuo)
