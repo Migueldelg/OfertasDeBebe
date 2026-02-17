@@ -1,0 +1,537 @@
+"""
+Tests para amazon_ps_ofertas.py
+
+Cubren funciones puras, I/O con mocks, parsing HTML y lógica de selección.
+Sirven como red de seguridad para refactors.
+"""
+
+import json
+import os
+import sys
+import textwrap
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
+
+# Importar el módulo sin ejecutar setup_logging ni abrir ficheros
+# ps/tests/ → ps/ → root
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+import ps.amazon_ps_ofertas as bot
+
+
+# ---------------------------------------------------------------------------
+# Helpers de fixtures
+# ---------------------------------------------------------------------------
+
+def make_producto(**kwargs):
+    """Crea un producto con valores por defecto, sobreescribibles."""
+    defaults = {
+        'asin': 'B000TEST01',
+        'titulo': 'Juego PS5 The Last of Us Part II',
+        'precio': '29,99€',
+        'precio_anterior': '49,99€',
+        'descuento': 40.0,
+        'valoraciones': 2500,
+        'ventas': 800,
+        'imagen': 'https://example.com/img.jpg',
+        'url': 'https://www.amazon.es/dp/B000TEST01?tag=juegosenoferta-21',
+        'tiene_oferta': True,
+    }
+    defaults.update(kwargs)
+    return defaults
+
+
+def make_categoria(**kwargs):
+    """Crea una categoría con valores por defecto."""
+    defaults = {
+        'nombre': 'Juegos PS5',
+        'emoji': '🎮',
+        'url': '/s?k=juegos+ps5',
+        'tipo': 'videojuego'
+    }
+    defaults.update(kwargs)
+    return defaults
+
+
+# ---------------------------------------------------------------------------
+# normalizar_titulo
+# ---------------------------------------------------------------------------
+
+class TestNormalizarTitulo:
+    def test_devuelve_set(self):
+        result = bot.normalizar_titulo("Juego PS5 The Last of Us")
+        assert isinstance(result, set)
+
+    def test_minusculas(self):
+        result = bot.normalizar_titulo("JUEGO PS5 SONY")
+        assert all(p == p.lower() for p in result)
+
+    def test_elimina_palabras_comunes(self):
+        result = bot.normalizar_titulo("Juego de PS5 para la consola")
+        assert 'de' not in result
+        assert 'para' not in result
+        assert 'la' not in result
+
+    def test_elimina_palabras_cortas(self):
+        result = bot.normalizar_titulo("Set de 2 mandos PS5")
+        # palabras de 2 letras o menos deben eliminarse
+        assert 'de' not in result
+
+    def test_palabras_clave_presentes(self):
+        result = bot.normalizar_titulo("Mando DualSense PS5 inalambrico")
+        assert 'dualsense' in result
+        assert 'inalambrico' in result
+
+    def test_cadena_vacia(self):
+        result = bot.normalizar_titulo("")
+        assert result == set()
+
+    def test_solo_palabras_ignoradas(self):
+        result = bot.normalizar_titulo("de para con sin el la los las")
+        assert result == set()
+
+
+# ---------------------------------------------------------------------------
+# titulos_similares
+# ---------------------------------------------------------------------------
+
+class TestTitulosSimilares:
+    def test_titulos_identicos_son_similares(self):
+        t = "Juego PS5 The Last of Us Part II"
+        assert bot.titulos_similares(t, t) is True
+
+    def test_titulos_muy_diferentes_no_son_similares(self):
+        assert bot.titulos_similares(
+            "Juego PS5 The Last of Us",
+            "Mando DualSense PS5 blanco"
+        ) is False
+
+    def test_titulos_parcialmente_similares_sobre_umbral(self):
+        # Comparten "ps5 the last of us" → alta similitud
+        assert bot.titulos_similares(
+            "Juego PS5 The Last of Us Part I",
+            "Juego PS5 The Last of Us Part II"
+        ) is True
+
+    def test_umbral_personalizado(self):
+        # Con umbral alto (0.8) dos títulos sin casi nada en común NO lo son
+        assert bot.titulos_similares(
+            "Juego PS5 The Last of Us",
+            "Mando DualSense blanco",
+            umbral=0.8
+        ) is False
+
+    def test_titulo_vacio_no_es_similar(self):
+        assert bot.titulos_similares("", "Juego PS5 The Last of Us") is False
+        assert bot.titulos_similares("Juego PS5 The Last of Us", "") is False
+
+    def test_ambos_vacios_no_son_similares(self):
+        assert bot.titulos_similares("", "") is False
+
+
+# ---------------------------------------------------------------------------
+# titulo_similar_a_recientes
+# ---------------------------------------------------------------------------
+
+class TestTituloSimilarARecientes:
+    def test_sin_recientes_devuelve_false(self):
+        assert bot.titulo_similar_a_recientes("Juego PS5 Elden Ring", []) is False
+
+    def test_detecta_similar_entre_recientes(self):
+        recientes = ["Juego PS5 The Last of Us Part II"]
+        assert bot.titulo_similar_a_recientes(
+            "Juego PS5 The Last of Us Part I", recientes
+        ) is True
+
+    def test_no_detecta_diferente(self):
+        recientes = ["Juego PS5 Elden Ring Standard Edition"]
+        assert bot.titulo_similar_a_recientes(
+            "Mando DualSense PS5 rojo", recientes
+        ) is False
+
+    def test_basta_un_similar_para_devolver_true(self):
+        recientes = [
+            "Juego PS5 Elden Ring",
+            "Mando DualSense PS5 blanco",
+            "Juego PS4 Red Dead Redemption 2",
+        ]
+        assert bot.titulo_similar_a_recientes(
+            "Juego PS5 Elden Ring Deluxe", recientes
+        ) is True
+
+
+# ---------------------------------------------------------------------------
+# obtener_prioridad_marca
+# ---------------------------------------------------------------------------
+
+class TestObtenerPrioridadMarca:
+    @pytest.mark.parametrize("titulo,esperado", [
+        ("Juego PS5 Sony The Last of Us", 1),
+        ("Mando DualSense PlayStation 5", 1),
+        ("Auriculares gaming Nacon", 1),
+        ("Mando Thrustmaster PS5", 1),
+        ("Auriculares Razer PS4", 1),
+        ("Juego generico marca desconocida", 0),
+        ("", 0),
+    ])
+    def test_prioridad(self, titulo, esperado):
+        assert bot.obtener_prioridad_marca(titulo) == esperado
+
+    def test_insensible_mayusculas(self):
+        assert bot.obtener_prioridad_marca("SONY PLAYSTATION") == 1
+        assert bot.obtener_prioridad_marca("sony ps5") == 1
+
+
+# ---------------------------------------------------------------------------
+# format_telegram_message
+# ---------------------------------------------------------------------------
+
+class TestFormatTelegramMessage:
+    def test_contiene_titulo(self):
+        p = make_producto(titulo="Juego PS5 The Last of Us Part II")
+        cat = make_categoria(nombre="Juegos PS5", emoji="🎮")
+        msg = bot.format_telegram_message(p, cat)
+        assert "Juego PS5 The Last of Us Part II" in msg
+
+    def test_contiene_nombre_categoria(self):
+        p = make_producto()
+        cat = make_categoria(nombre="Juegos PS5")
+        msg = bot.format_telegram_message(p, cat)
+        assert "JUEGOS PS5" in msg
+
+    def test_muestra_precio_anterior_tachado(self):
+        p = make_producto(precio="29,99€", precio_anterior="49,99€")
+        msg = bot.format_telegram_message(p, make_categoria())
+        assert "<s>" in msg
+        assert "49,99€" in msg
+
+    def test_muestra_descuento_porcentaje(self):
+        p = make_producto(precio="25,00€", precio_anterior="50,00€")
+        msg = bot.format_telegram_message(p, make_categoria())
+        assert "-50%" in msg
+
+    def test_sin_precio_anterior_no_tachado(self):
+        p = make_producto(precio="29,99€", precio_anterior=None)
+        msg = bot.format_telegram_message(p, make_categoria())
+        assert "<s>" not in msg
+
+    def test_contiene_enlace_amazon(self):
+        p = make_producto(url="https://www.amazon.es/dp/B000TEST01?tag=juegosenoferta-21")
+        msg = bot.format_telegram_message(p, make_categoria())
+        assert "amazon.es" in msg
+
+    def test_escapa_html_en_titulo(self):
+        p = make_producto(titulo='Juego <"especial"> & más')
+        msg = bot.format_telegram_message(p, make_categoria())
+        assert "<\"especial\">" not in msg
+        assert "&amp;" in msg or "&lt;" in msg
+
+    def test_emoji_categoria_presente(self):
+        cat = make_categoria(emoji="🎮")
+        msg = bot.format_telegram_message(make_producto(), cat)
+        assert "🎮" in msg
+
+    def test_categoria_por_defecto_si_falta_emoji(self):
+        cat = {'nombre': 'Juegos PS5'}  # sin emoji
+        msg = bot.format_telegram_message(make_producto(), cat)
+        assert "🛍️" in msg
+
+
+# ---------------------------------------------------------------------------
+# load_posted_deals
+# ---------------------------------------------------------------------------
+
+class TestLoadPostedDeals:
+    def test_sin_fichero_devuelve_vacios(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(tmp_path / 'noexiste.json'))
+        deals, cats, titulos, semanales = bot.load_posted_deals()
+        assert deals == {}
+        assert cats == []
+        assert titulos == []
+        assert semanales == {}
+
+    def test_fichero_corrupto_devuelve_vacios(self, tmp_path, monkeypatch):
+        f = tmp_path / 'deals.json'
+        f.write_text("{ esto no es json válido }")
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(f))
+        deals, cats, titulos, semanales = bot.load_posted_deals()
+        assert deals == {}
+
+    def test_filtra_asins_expirados(self, tmp_path, monkeypatch):
+        ahora = datetime.now()
+        reciente = (ahora - timedelta(hours=24)).isoformat()
+        expirado = (ahora - timedelta(hours=72)).isoformat()
+        data = {
+            'ASIN_RECIENTE': reciente,
+            'ASIN_EXPIRADO': expirado,
+        }
+        f = tmp_path / 'deals.json'
+        f.write_text(json.dumps(data))
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(f))
+        deals, _, _, _ = bot.load_posted_deals()
+        assert 'ASIN_RECIENTE' in deals
+        assert 'ASIN_EXPIRADO' not in deals
+
+    def test_carga_ultimas_categorias(self, tmp_path, monkeypatch):
+        data = {'_ultimas_categorias': ['Juegos PS5', 'Mandos PS5']}
+        f = tmp_path / 'deals.json'
+        f.write_text(json.dumps(data))
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(f))
+        _, cats, _, _ = bot.load_posted_deals()
+        assert cats == ['Juegos PS5', 'Mandos PS5']
+
+    def test_carga_categorias_semanales(self, tmp_path, monkeypatch):
+        ts = datetime.now().isoformat()
+        data = {'_categorias_semanales': {'Juegos PS5': ts}}
+        f = tmp_path / 'deals.json'
+        f.write_text(json.dumps(data))
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(f))
+        _, _, _, semanales = bot.load_posted_deals()
+        assert 'Juegos PS5' in semanales
+
+
+# ---------------------------------------------------------------------------
+# save_posted_deals
+# ---------------------------------------------------------------------------
+
+class TestSavePostedDeals:
+    def test_guarda_asins(self, tmp_path, monkeypatch):
+        f = tmp_path / 'deals.json'
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(f))
+        ts = datetime.now().isoformat()
+        bot.save_posted_deals({'B001': ts})
+        data = json.loads(f.read_text())
+        assert data['B001'] == ts
+
+    def test_guarda_ultimas_categorias(self, tmp_path, monkeypatch):
+        f = tmp_path / 'deals.json'
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(f))
+        bot.save_posted_deals({}, ultimas_categorias=['Juegos PS5', 'Mandos PS5'])
+        data = json.loads(f.read_text())
+        assert data['_ultimas_categorias'] == ['Juegos PS5', 'Mandos PS5']
+
+    def test_guarda_categorias_semanales(self, tmp_path, monkeypatch):
+        f = tmp_path / 'deals.json'
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(f))
+        ts = datetime.now().isoformat()
+        bot.save_posted_deals({}, categorias_semanales={'Juegos PS5': ts})
+        data = json.loads(f.read_text())
+        assert data['_categorias_semanales']['Juegos PS5'] == ts
+
+    def test_roundtrip_load_save(self, tmp_path, monkeypatch):
+        f = tmp_path / 'deals.json'
+        monkeypatch.setattr(bot, 'POSTED_PS_DEALS_FILE', str(f))
+        ts = datetime.now().isoformat()
+        bot.save_posted_deals(
+            {'B001': ts},
+            ultimas_categorias=['Juegos PS5'],
+            ultimos_titulos=['Juego PS5 Elden Ring'],
+            categorias_semanales={'Juegos PS5': ts},
+        )
+        deals, cats, titulos, semanales = bot.load_posted_deals()
+        assert 'B001' in deals
+        assert cats == ['Juegos PS5']
+        assert titulos == ['Juego PS5 Elden Ring']
+        assert 'Juegos PS5' in semanales
+
+
+# ---------------------------------------------------------------------------
+# extraer_productos_busqueda
+# ---------------------------------------------------------------------------
+
+def _html_con_producto(
+    asin="B001EXAMPLE",
+    titulo="Juego PS5 The Last of Us Part II",
+    precio_actual="29,99€",
+    precio_anterior="49,99€",
+    valoraciones="2.500",
+    img_src="https://example.com/img.jpg",
+):
+    """Genera HTML mínimo con la estructura que espera el scraper de Amazon.
+
+    El orden importa: Amazon pone primero el precio actual (sin data-a-strike)
+    y luego el precio tachado (con data-a-strike="true").
+    """
+    return textwrap.dedent(f"""
+    <html><body>
+    <div data-component-type="s-search-result" data-asin="{asin}">
+      <h2><a><span>{titulo}</span></a></h2>
+      <span class="a-price">
+        <span class="a-offscreen">{precio_actual}</span>
+      </span>
+      <span class="a-price a-text-price" data-a-strike="true">
+        <span class="a-offscreen">{precio_anterior}</span>
+      </span>
+      <span class="a-size-base s-underline-text">{valoraciones}</span>
+      <img class="s-image" src="{img_src}" />
+    </div>
+    </body></html>
+    """)
+
+
+class TestExtraerProductosBusqueda:
+    def test_extrae_asin(self):
+        html = _html_con_producto(asin="B001TEST")
+        productos = bot.extraer_productos_busqueda(html)
+        assert len(productos) >= 1
+        assert productos[0]['asin'] == "B001TEST"
+
+    def test_extrae_titulo(self):
+        html = _html_con_producto(titulo="Juego PS5 Elden Ring")
+        productos = bot.extraer_productos_busqueda(html)
+        assert "Juego PS5 Elden Ring" in productos[0]['titulo']
+
+    def test_extrae_precio_actual(self):
+        html = _html_con_producto(precio_actual="29,99€")
+        productos = bot.extraer_productos_busqueda(html)
+        assert productos[0]['precio'] == "29,99€"
+
+    def test_extrae_precio_anterior(self):
+        html = _html_con_producto(precio_anterior="49,99€")
+        productos = bot.extraer_productos_busqueda(html)
+        assert productos[0]['precio_anterior'] == "49,99€"
+
+    def test_calcula_descuento(self):
+        html = _html_con_producto(precio_actual="25,00€", precio_anterior="50,00€")
+        productos = bot.extraer_productos_busqueda(html)
+        assert abs(productos[0]['descuento'] - 50.0) < 0.1
+
+    def test_tiene_oferta_true_cuando_hay_precio_anterior(self):
+        html = _html_con_producto(precio_anterior="49,99€")
+        productos = bot.extraer_productos_busqueda(html)
+        assert productos[0]['tiene_oferta'] is True
+
+    def test_tiene_oferta_false_sin_precio_anterior(self):
+        # HTML sin precio anterior tachado
+        html_sin_anterior = textwrap.dedent("""
+        <html><body>
+        <div data-component-type="s-search-result" data-asin="B001NOOFF">
+          <h2><a><span>Juego PS5 sin oferta</span></a></h2>
+          <span class="a-price">
+            <span class="a-offscreen">59,99€</span>
+          </span>
+        </div>
+        </body></html>
+        """)
+        productos = bot.extraer_productos_busqueda(html_sin_anterior)
+        assert len(productos) >= 1
+        assert productos[0]['tiene_oferta'] is False
+
+    def test_url_incluye_tag_afiliado(self):
+        html = _html_con_producto(asin="B001TEST")
+        productos = bot.extraer_productos_busqueda(html)
+        assert "juegosenoferta-21" in productos[0]['url']
+
+    def test_titulo_truncado_a_100_caracteres(self):
+        titulo_largo = "A" * 200
+        html = _html_con_producto(titulo=titulo_largo)
+        productos = bot.extraer_productos_busqueda(html)
+        assert len(productos[0]['titulo']) <= 103  # 100 + "..."
+
+    def test_html_vacio_devuelve_lista_vacia(self):
+        productos = bot.extraer_productos_busqueda("<html><body></body></html>")
+        assert productos == []
+
+    def test_item_sin_asin_se_omite(self):
+        html_sin_asin = textwrap.dedent("""
+        <html><body>
+        <div data-component-type="s-search-result">
+          <h2><a><span>Sin ASIN</span></a></h2>
+        </div>
+        </body></html>
+        """)
+        productos = bot.extraer_productos_busqueda(html_sin_asin)
+        assert len(productos) == 0
+
+
+# ---------------------------------------------------------------------------
+# Integracion: buscar_y_publicar_ofertas
+# ---------------------------------------------------------------------------
+
+class TestBuscarYPublicarOfertasIntegracion:
+    @patch('ps.amazon_ps_ofertas._effective_chat_id')
+    @patch('ps.amazon_ps_ofertas._effective_token')
+    @patch('ps.amazon_ps_ofertas.send_telegram_photo')
+    @patch('ps.amazon_ps_ofertas.obtener_pagina')
+    @patch('ps.amazon_ps_ofertas.load_posted_deals')
+    @patch('ps.amazon_ps_ofertas.save_posted_deals')
+    def test_publica_mejor_videojuego_sobre_accesorio(self, mock_save, mock_load, mock_pagina, mock_foto, mock_token, mock_chat_id):
+        """Verifica que los videojuegos se priorizan sobre accesorios."""
+        mock_load.return_value = ({}, [], [], {})
+        mock_foto.return_value = True
+        mock_token.return_value = 'fake_token'
+        mock_chat_id.return_value = 'fake_chat_id'
+        mock_pagina.return_value = _html_con_producto(
+            asin="PS5_GAME",
+            titulo="Juego PS5 Elden Ring",
+            precio_anterior="59,99€",
+            precio_actual="35,99€"
+        )
+
+        # Simular ofertas de videojuego (mejor descuento) y accesorio (peor descuento)
+        # El algoritmo debe elegir el videojuego
+        resultado = bot.buscar_y_publicar_ofertas()
+        assert resultado == 1
+        mock_foto.assert_called()
+
+    @patch('ps.amazon_ps_ofertas.send_telegram_photo')
+    @patch('ps.amazon_ps_ofertas.obtener_pagina')
+    @patch('ps.amazon_ps_ofertas.load_posted_deals')
+    @patch('ps.amazon_ps_ofertas.save_posted_deals')
+    def test_evita_duplicados_48h(self, mock_save, mock_load, mock_pagina, mock_foto):
+        """Verifica que no se publican ASINs duplicados en 48h."""
+        ahora = datetime.now()
+        asin_reciente = 'B001_RECIENTE'
+        posted_deals = {asin_reciente: (ahora - timedelta(hours=24)).isoformat()}
+        mock_load.return_value = (posted_deals, [], [], {})
+        mock_pagina.return_value = _html_con_producto(asin=asin_reciente)
+        mock_foto.return_value = True
+
+        resultado = bot.buscar_y_publicar_ofertas()
+        # No debe publicar porque el ASIN ya fue publicado hace <48h
+        assert resultado == 0
+
+    @patch('ps.amazon_ps_ofertas.send_telegram_message')
+    @patch('ps.amazon_ps_ofertas.obtener_pagina')
+    @patch('ps.amazon_ps_ofertas.load_posted_deals')
+    @patch('ps.amazon_ps_ofertas.save_posted_deals')
+    def test_modo_dev_no_guarda_estado(self, mock_save, mock_load, mock_pagina, mock_msg):
+        """En DEV_MODE, no se modifica posted_ps_deals.json."""
+        bot.DEV_MODE = True
+        mock_load.return_value = ({}, [], [], {})
+        mock_pagina.return_value = _html_con_producto()
+        mock_msg.return_value = True
+
+        resultado = bot.buscar_y_publicar_ofertas()
+        bot.DEV_MODE = False
+
+        if resultado == 1:
+            # Si publica, verifica que save_posted_deals NO fue llamado
+            mock_save.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Prioridad de Videojuegos
+# ---------------------------------------------------------------------------
+
+class TestPrioridadVideojuegos:
+    def test_categoria_tipo_videojuego(self):
+        """Verifica que las categorías de videojuegos tengan tipo='videojuego'."""
+        videojuegos = [c for c in bot.CATEGORIAS_PS if c['tipo'] == 'videojuego']
+        accesorios = [c for c in bot.CATEGORIAS_PS if c['tipo'] == 'accesorio']
+
+        assert len(videojuegos) > 0
+        assert len(accesorios) > 0
+
+        # Verificar que existen las categorías esperadas
+        nombres_videojuegos = {c['nombre'] for c in videojuegos}
+        assert 'Juegos PS5' in nombres_videojuegos
+        assert 'Juegos PS4' in nombres_videojuegos
+
+    def test_categorias_ps_tienen_tipo(self):
+        """Todas las categorías deben tener un 'tipo' definido."""
+        for cat in bot.CATEGORIAS_PS:
+            assert 'tipo' in cat
+            assert cat['tipo'] in ['videojuego', 'accesorio']

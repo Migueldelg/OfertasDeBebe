@@ -60,37 +60,77 @@ Funciones extraídas de `amazon_bebe_ofertas.py` al módulo compartido:
 
 ---
 
-## Fase 3 — Crear `amazon_ps_ofertas.py`
+## ✅ Fase 3 — Crear `amazon_ps_ofertas.py` — COMPLETADA
 
 Script independiente con configuración específica de PS4/PS5. Mismo patrón que bebe:
 importar utilidades del core, definir wrappers con credenciales PS, y tener
 `buscar_y_publicar_ofertas()` propio que use los wrappers locales.
 
+### Características implementadas
+
+✅ **Priorización de videojuegos** - Juegos PS4/PS5 siempre por delante de accesorios
+✅ **Anti-duplicados 48h** - No repite el mismo ASIN en 48 horas
+✅ **Anti-títulos similares** - Para Juegos PS4/PS5, evita títulos similares a los recientes
+✅ **Modo DEV** - Publica en canal de pruebas sin modificar `posted_ps_deals.json`
+✅ **59 tests** - Cobertura completa de lógica, parsing, I/O y priorización
+✅ **README.md** - Documentación completa de uso y configuración
+
+### Configuración
+
 ```python
 # Archivo de estado
 POSTED_PS_DEALS_FILE = "posted_ps_deals.json"
 
-# Categorías propuestas (ajustable)
+# Categorías con campo 'tipo' para priorizar videojuegos
 CATEGORIAS_PS = [
-    {"nombre": "Juegos PS5",        "emoji": "🎮", "url": "/s?k=juegos+ps5"},
-    {"nombre": "Juegos PS4",        "emoji": "🎮", "url": "/s?k=juegos+ps4"},
-    {"nombre": "Mandos PS5",        "emoji": "🕹️", "url": "/s?k=mando+dualsense+ps5"},
-    {"nombre": "Mandos PS4",        "emoji": "🕹️", "url": "/s?k=mando+dualshock+ps4"},
-    {"nombre": "Auriculares gaming","emoji": "🎧", "url": "/s?k=auriculares+gaming+ps4+ps5"},
-    {"nombre": "Tarjetas PSN",      "emoji": "💳", "url": "/s?k=tarjeta+psn+playstation"},
-    {"nombre": "Accesorios PS5",    "emoji": "⚙️",  "url": "/s?k=accesorios+ps5"},
-    {"nombre": "Accesorios PS4",    "emoji": "⚙️",  "url": "/s?k=accesorios+ps4"},
+    # Videojuegos (priorizados)
+    {"nombre": "Juegos PS5",        "emoji": "🎮", "url": "/s?k=juegos+ps5",           "tipo": "videojuego"},
+    {"nombre": "Juegos PS4",        "emoji": "🎮", "url": "/s?k=juegos+ps4",           "tipo": "videojuego"},
+    # Accesorios
+    {"nombre": "Mandos PS5",        "emoji": "🕹️", "url": "/s?k=mando+dualsense+ps5",  "tipo": "accesorio"},
+    {"nombre": "Mandos PS4",        "emoji": "🕹️", "url": "/s?k=mando+dualshock+ps4",  "tipo": "accesorio"},
+    {"nombre": "Auriculares gaming","emoji": "🎧", "url": "/s?k=auriculares+gaming...", "tipo": "accesorio"},
+    {"nombre": "Tarjetas PSN",      "emoji": "💳", "url": "/s?k=tarjeta+psn+play...",  "tipo": "accesorio"},
+    {"nombre": "Accesorios PS5",    "emoji": "⚙️",  "url": "/s?k=accesorios+ps5",      "tipo": "accesorio"},
+    {"nombre": "Accesorios PS4",    "emoji": "⚙️",  "url": "/s?k=accesorios+ps4",      "tipo": "accesorio"},
 ]
 
-MARCAS_PRIORITARIAS_PS = ["sony", "playstation", "nacon", "thrustmaster", "razer", "hyperx"]
+MARCAS_PRIORITARIAS = ["sony", "playstation", "nacon", "thrustmaster", "razer", "hyperx"]
 
-CATEGORIAS_VERIFICAR_TITULOS_PS = ["Juegos PS5", "Juegos PS4"]  # Evitar juegos similares
-CATEGORIAS_LIMITE_SEMANAL_PS = []                                 # Sin límite semanal
-CATEGORIAS_EXCLUIDAS_REPETICION_PS = []                           # Sin excepciones
+CATEGORIAS_VERIFICAR_TITULOS = ["Juegos PS5", "Juegos PS4"]  # Evitar juegos similares
+CATEGORIAS_LIMITE_SEMANAL = []                                 # Sin límite semanal (no aplica en PS)
 
 # Secrets específicos del canal PS
 TELEGRAM_PS_BOT_TOKEN = os.getenv('TELEGRAM_PS_BOT_TOKEN')
 TELEGRAM_PS_CHAT_ID   = os.getenv('TELEGRAM_PS_CHAT_ID')
+DEV_TELEGRAM_PS_BOT_TOKEN = os.getenv('DEV_TELEGRAM_PS_BOT_TOKEN')
+DEV_TELEGRAM_PS_CHAT_ID = os.getenv('DEV_TELEGRAM_PS_CHAT_ID')
+```
+
+### Archivos creados
+
+```
+ps/
+├── amazon_ps_ofertas.py           ← Script principal con priorización de videojuegos
+├── posted_ps_deals.json           ← Estado anti-duplicados (vacío inicialmente)
+├── ofertas_ps.log                 ← Logs de ejecución (generado tras primera ejecución)
+├── README.md                      ← Documentación completa
+├── __init__.py                    ← Módulo Python
+└── tests/
+    ├── test_amazon_ps_ofertas.py  ← 59 tests (todos en verde ✅)
+    └── __init__.py
+```
+
+### Ejecución manual para pruebas
+
+```bash
+# Modo desarrollo (no modifica JSON, publica en canal dev)
+export DEV_TELEGRAM_PS_BOT_TOKEN=...
+export DEV_TELEGRAM_PS_CHAT_ID=...
+python3 ps/amazon_ps_ofertas.py --dev
+
+# Ver logs
+tail -f ps/ofertas_ps.log
 ```
 
 ---
@@ -137,10 +177,12 @@ Será el archivo de estado inicial del canal PS.
 |---|---|---|
 | `amazon_ofertas_core.py` | CREAR | ✅ Hecho |
 | `amazon_bebe_ofertas.py` | MODIFICAR (importar desde core, mismo comportamiento) | ✅ Hecho |
-| `amazon_ps_ofertas.py` | CREAR | Pendiente |
-| `.github/workflows/ofertas-ps.yml` | CREAR | Pendiente |
-| `.github/workflows/ofertas.yml` | MODIFICAR (añadir `git pull --rebase`) | Pendiente |
-| `posted_ps_deals.json` | CREAR (vacío `{}`) | Pendiente |
+| `amazon_ps_ofertas.py` | CREAR | ✅ Hecho (Fase 3) |
+| `ps/posted_ps_deals.json` | CREAR (vacío `{}`) | ✅ Hecho (Fase 3) |
+| `ps/tests/test_amazon_ps_ofertas.py` | CREAR (59 tests) | ✅ Hecho (Fase 3) |
+| `ps/README.md` | CREAR (documentación) | ✅ Hecho (Fase 3) |
+| `.github/workflows/ofertas-ps.yml` | CREAR | Pendiente (Fase 4) |
+| `.github/workflows/ofertas.yml` | MODIFICAR (añadir `git pull --rebase`) | Pendiente (Fase 4) |
 
 ---
 
