@@ -8,28 +8,48 @@
 
 ## Resumen Ejecutivo
 
-- **Qué:** Bot que busca las mejores ofertas de bebé en Amazon.es → publica en Telegram
-- **Dónde:** `shared/amazon_ofertas_core.py` (funciones genéricas) + `bebe/amazon_bebe_ofertas.py` (config + lógica)
-- **Cuándo:** Una vez por ejecución (o cada 15 min en modo continuo)
-- **Cómo:** Busca 12 categorías → elige la mejor de cada → publica la mejor global
-- **Tests:** 64 tests en `bebe/tests/test_amazon_bebe_ofertas.py` → ejecutar con `python3 -m pytest -v`
+**Plataforma multi-canal** que busca las mejores ofertas de Amazon.es y las publica en Telegram.
+
+### Canal 🍼 Bebé (en producción)
+- **Config:** `bebe/amazon_bebe_ofertas.py`
+- **Categorías:** 12 (Pañales, Toallitas, Juguetes, etc.)
+- **Tests:** 64 tests
+
+### Canal 🎮 PS4/PS5 (en producción)
+- **Config:** `ps/amazon_ps_ofertas.py` — **Prioriza videojuegos sobre accesorios**
+- **Categorías:** 8 (Juegos PS5/PS4, Mandos, Accesorios)
+- **Tests:** 59 tests
+- **Workflow:** `.github/workflows/ofertas-ps.yml`
+
+### Core Compartido
+- `shared/amazon_ofertas_core.py` — Motor genérico (scraping, Telegram, utilidades)
 
 ---
 
 ## Estructura de carpetas
 
 ```
-shared/                         ← Motor compartido (genérico, reutilizable)
-└── amazon_ofertas_core.py
+shared/
+└── amazon_ofertas_core.py       ← Motor compartido (scraping, Telegram, utilidades)
 
-bebe/                           ← Canal bebé (config + lógica + estado + tests)
+bebe/                           ← 🍼 Canal bebé (producción ✅)
 ├── amazon_bebe_ofertas.py
 ├── posted_bebe_deals.json
-└── tests/
-    └── test_amazon_bebe_ofertas.py
+├── README.md
+└── tests/ (64 tests)
 
-ps/                             ← Canal futuro (mismo patrón)
-switch/                         ← Canal futuro (mismo patrón)
+ps/                             ← 🎮 Canal PS4/PS5 (producción ✅)
+├── amazon_ps_ofertas.py        ← Prioriza videojuegos sobre accesorios
+├── posted_ps_deals.json
+├── README.md
+└── tests/ (59 tests)
+
+.github/workflows/
+├── ofertas.yml                 ← Bebé (cada 30 min)
+└── ofertas-ps.yml              ← PS4/PS5 (cada 30 min)
+
+switch/                         ← Canal futuro
+viajes/                         ← Canal futuro
 ```
 
 ---
@@ -81,32 +101,73 @@ De todas las mejores:
 
 ## Ejecución
 
-El bot corre en **GitHub Actions** cada 30 minutos automáticamente.
+Los bots corre en **GitHub Actions** cada 30 minutos automáticamente.
 
+### Lanzamiento manual
 ```bash
-gh workflow run "Ofertas de Bebé"                             # Lanzar manualmente
-gh run watch                                                  # Ver progreso
-source .env && python3 bebe/amazon_bebe_ofertas.py            # Ejecutar local (producción)
-source .env && python3 bebe/amazon_bebe_ofertas.py --dev      # Ejecutar local en modo dev (canal de pruebas, JSON intacto)
-source .env && python3 bebe/amazon_bebe_ofertas.py --continuo # Ejecutar en bucle cada 15 min
-python3 -m pytest -v                                          # Ejecutar tests
+gh workflow run "Ofertas de Bebé"        # Canal bebé
+gh workflow run "Ofertas PS4/PS5"        # Canal PS
+gh run watch                             # Ver progreso en tiempo real
+```
+
+### Ejecución local - Canal Bebé
+```bash
+source .env && python3 bebe/amazon_bebe_ofertas.py            # Producción
+source .env && python3 bebe/amazon_bebe_ofertas.py --dev      # Desarrollo (no modifica JSON)
+source .env && python3 bebe/amazon_bebe_ofertas.py --continuo # Bucle cada 15 min
+```
+
+### Ejecución local - Canal PS4/PS5
+```bash
+source .env && python3 ps/amazon_ps_ofertas.py                # Producción
+source .env && python3 ps/amazon_ps_ofertas.py --dev          # Desarrollo
+source .env && python3 ps/amazon_ps_ofertas.py --continuo     # Bucle cada 15 min
+```
+
+### Tests
+```bash
+python3 -m pytest -v                                          # Todos los tests
+python3 -m pytest bebe/tests/ -v                              # Solo bebé
+python3 -m pytest ps/tests/ -v                                # Solo PS
 ```
 
 ---
 
 ## Cambios Comunes
 
+### Canal Bebé
+
 | Tarea | Ubicación |
 |-------|-----------|
-| Añadir categoría | `CATEGORIAS_BEBE` línea ~70 en `bebe/amazon_bebe_ofertas.py` |
-| Cambiar marcas prioritarias | `MARCAS_PRIORITARIAS` línea ~67 |
-| Activar límite semanal en categoría | `CATEGORIAS_LIMITE_SEMANAL` línea ~64 |
-| Cambiar ventana anti-duplicados | `timedelta(hours=48)` en `load_posted_deals()` del core |
-| Cambiar frecuencia del schedule | `cron:` en `.github/workflows/ofertas.yml` |
+| Añadir categoría | `CATEGORIAS_BEBE` línea ~72 en `bebe/amazon_bebe_ofertas.py` |
+| Cambiar marcas prioritarias | `MARCAS_PRIORITARIAS` línea ~69 |
+| Activar límite semanal en categoría | `CATEGORIAS_LIMITE_SEMANAL` línea ~66 |
+
+### Canal PS4/PS5
+
+| Tarea | Ubicación |
+|-------|-----------|
+| Cambiar priorización (siempre videojuegos) | Campo `tipo` en `CATEGORIAS_PS` línea ~71 en `ps/amazon_ps_ofertas.py` |
+| Cambiar marcas prioritarias | `MARCAS_PRIORITARIAS` línea ~68 |
+| Añadir categoría | `CATEGORIAS_PS` línea ~71 |
+
+### Ambos canales
+
+| Tarea | Ubicación |
+|-------|-----------|
+| Cambiar ventana anti-duplicados | `timedelta(hours=48)` en `load_posted_deals()` de `shared/amazon_ofertas_core.py` |
+| Cambiar frecuencia del schedule | `cron:` en `.github/workflows/ofertas.yml` o `ofertas-ps.yml` |
 | Cambiar formato Telegram | Función `format_telegram_message()` en `shared/amazon_ofertas_core.py` |
 | Cambiar selectores CSS | Función `extraer_productos_busqueda()` en `shared/amazon_ofertas_core.py` |
-| Credenciales Telegram prod | GitHub Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| Credenciales Telegram dev | `.env` local: `DEV_TELEGRAM_BOT_TOKEN`, `DEV_TELEGRAM_CHAT_ID` |
+
+### Secretos
+
+| Credencial | Ubicación |
+|---|---|
+| Bebé Producción | GitHub Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Bebé Desarrollo | `.env` local: `DEV_TELEGRAM_BOT_TOKEN`, `DEV_TELEGRAM_CHAT_ID` |
+| PS Producción | GitHub Secrets: `TELEGRAM_PS_BOT_TOKEN`, `TELEGRAM_PS_CHAT_ID` ✅ |
+| PS Desarrollo | `.env` local: `DEV_TELEGRAM_PS_BOT_TOKEN`, `DEV_TELEGRAM_PS_CHAT_ID` |
 
 ---
 

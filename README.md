@@ -8,17 +8,19 @@ Corre en **GitHub Actions** sin necesidad de servidor propio.
 
 ## Canales activos
 
-| Canal | Carpeta | Telegram | Workflow |
-|-------|---------|----------|----------|
-| 🍼 Ofertas de Bebé | `bebe/` | [@ofertasparaelbebe](https://t.me/ofertasparaelbebe) | Cada 30 min |
+| Canal | Carpeta | Status | Workflow |
+|-------|---------|--------|----------|
+| 🍼 Ofertas de Bebé | `bebe/` | ✅ En producción | Cada 30 min |
+| 🎮 Ofertas PS4/PS5 | `ps/` | ✅ En producción* | Cada 30 min |
+
+*Necesita agregar secrets en GitHub (TELEGRAM_PS_BOT_TOKEN, TELEGRAM_PS_CHAT_ID)
 
 ## Próximos canales (en desarrollo)
 
-| Canal | Carpeta |
-|-------|---------|
-| 🎮 Ofertas PlayStation | `ps/` *(pendiente)* |
-| 🟢 Ofertas Nintendo Switch | `switch/` *(pendiente)* |
-| ✈️ Ofertas Viajes | `viajes/` *(pendiente)* |
+| Canal | Carpeta | Estado |
+|-------|---------|--------|
+| 🟢 Ofertas Nintendo Switch | `switch/` | Planificado |
+| ✈️ Ofertas Viajes | `viajes/` | Planificado |
 
 ---
 
@@ -86,36 +88,56 @@ RadarOfertas/
 ├── bebe/
 │   ├── amazon_bebe_ofertas.py      ← Canal bebé
 │   ├── posted_bebe_deals.json      ← Estado anti-duplicados del canal bebé
+│   ├── README.md                   ← Documentación del canal bebé
 │   └── tests/
 │       └── test_amazon_bebe_ofertas.py ← 64 tests automatizados
+│
+├── ps/
+│   ├── amazon_ps_ofertas.py        ← Canal PS4/PS5 (Fase 3 ✅)
+│   ├── posted_ps_deals.json        ← Estado anti-duplicados del canal PS
+│   ├── README.md                   ← Documentación del canal PS
+│   └── tests/
+│       └── test_amazon_ps_ofertas.py ← 59 tests automatizados
 │
 ├── requirements.txt                ← Dependencias Python (producción)
 ├── requirements-dev.txt            ← Dependencias de desarrollo (pytest)
 ├── pytest.ini                      ← Config de pytest (testpaths, pythonpath)
 │
 ├── .github/workflows/
-│   └── ofertas.yml                 ← Workflow del canal bebé (cada 30 min)
+│   ├── ofertas.yml                 ← Workflow del canal bebé (cada 30 min)
+│   └── ofertas-ps.yml              ← Workflow del canal PS (cada 30 min)
 │
 ├── .gitignore
 ├── README.md
+├── CLAUDE.md                       ← Referencia rápida para Claude
 ├── AGENTS.md                       ← Referencia técnica para IA
-└── CLAUDE.md                       ← Referencia rápida para Claude
+├── PLAN_PS_CHANNEL.md              ← Plan de desarrollo del canal PS (Fases 1-4 ✅)
+└── .env.sample                     ← Plantilla de credenciales
 ```
 
 ---
 
 ## GitHub Actions
 
-Cada canal tiene su propio workflow que corre de forma independiente. Al final de cada run, si se publicó una oferta nueva, el workflow hace commit del JSON de estado de vuelta al repo para persistir el historial.
+Cada canal tiene su propio workflow que corre de forma independiente cada **30 minutos**. Al final de cada run, si se publicó una oferta nueva, el workflow hace commit del JSON de estado de vuelta al repo para persistir el historial.
 
 Los logs de cada run están disponibles en la pestaña *Actions* del repo durante 90 días.
 
-### Ejecución manual
+### Workflows disponibles
 
 ```bash
-gh workflow run "Ofertas de Bebé"
-gh run watch  # Seguir progreso en tiempo real
+gh workflow run "Ofertas de Bebé"        # Canal bebé
+gh workflow run "Ofertas PS4/PS5"        # Canal PS (requiere secrets)
+gh run watch                             # Seguir progreso en tiempo real
 ```
+
+### Configuración de nuevos canales
+
+Al agregar un nuevo canal, necesitas:
+1. Crear la carpeta y script (`canal/amazon_canal_ofertas.py`)
+2. Crear el workflow (`.github/workflows/ofertas-canal.yml`)
+3. Agregar los secrets en GitHub
+4. El workflow se ejecutará automáticamente cada 30 minutos
 
 ---
 
@@ -136,11 +158,20 @@ cp .env.sample .env
 # edita .env con tu editor y rellena los valores
 ```
 
+**Variables de entorno necesarias:**
+
 ```bash
-export TELEGRAM_BOT_TOKEN=tu_token_aqui       # Bot y canal de producción
+# Canal de Bebé
+export TELEGRAM_BOT_TOKEN=tu_token_aqui
 export TELEGRAM_CHAT_ID=tu_chat_id_aqui
-export DEV_TELEGRAM_BOT_TOKEN=tu_token_dev    # Bot y canal de pruebas (para --dev)
+export DEV_TELEGRAM_BOT_TOKEN=tu_token_dev
 export DEV_TELEGRAM_CHAT_ID=tu_chat_id_dev
+
+# Canal PS4/PS5 (nuevo)
+export TELEGRAM_PS_BOT_TOKEN=tu_token_ps
+export TELEGRAM_PS_CHAT_ID=tu_chat_id_ps
+export DEV_TELEGRAM_PS_BOT_TOKEN=tu_token_ps_dev
+export DEV_TELEGRAM_PS_CHAT_ID=tu_chat_id_ps_dev
 ```
 
 **¿Cómo obtener estos valores?**
@@ -149,6 +180,7 @@ export DEV_TELEGRAM_CHAT_ID=tu_chat_id_dev
 
 ### 3. Ejecutar
 
+**Canal de Bebé:**
 ```bash
 # Producción: publica en el canal real y actualiza el JSON de estado
 source .env && python3 bebe/amazon_bebe_ofertas.py
@@ -157,11 +189,34 @@ source .env && python3 bebe/amazon_bebe_ofertas.py
 source .env && python3 bebe/amazon_bebe_ofertas.py --dev
 ```
 
+**Canal PS4/PS5:**
+```bash
+# Producción
+source .env && python3 ps/amazon_ps_ofertas.py
+
+# Desarrollo
+source .env && python3 ps/amazon_ps_ofertas.py --dev
+
+# Modo continuo (cada 15 minutos)
+source .env && python3 ps/amazon_ps_ofertas.py --continuo
+```
+
 ### 4. Ejecutar los tests (sin necesidad de credenciales)
 
 ```bash
 pip install -r requirements-dev.txt
+
+# Todos los tests
 python3 -m pytest -v
+
+# Solo tests del canal bebé
+python3 -m pytest bebe/tests/ -v
+
+# Solo tests del canal PS
+python3 -m pytest ps/tests/ -v
+
+# Con cobertura
+python3 -m pytest --cov=ps.amazon_ps_ofertas --cov-report=term-missing
 ```
 
 ---
@@ -193,4 +248,6 @@ git add bebe/posted_bebe_deals.json && git commit -m "chore: resetear estado" &&
 
 ---
 
-*Canales activos: [@ofertasparaelbebe](https://t.me/ofertasparaelbebe)*
+**Canales activos:**
+- 🍼 [@ofertasparaelbebe](https://t.me/ofertasparaelbebe) - Bebé
+- 🎮 PS4/PS5 - En producción (secrets pendientes)

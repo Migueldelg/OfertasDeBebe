@@ -166,15 +166,28 @@ Cuando los dos workflows se ejecutan simultáneamente y ambos hacen push, el seg
 
 ---
 
-## Fase 5 — Agregar Secrets en GitHub (MANUAL)
+## ✅ Fase 5 — Agregar Secrets en GitHub (MANUAL) — COMPLETADA
 
-Acceder a: `https://github.com/Migueldelg/RadarOfertas/settings/secrets/actions`
+Secrets agregados en: `https://github.com/Migueldelg/RadarOfertas/settings/secrets/actions`
 
-Agregar los siguientes secrets:
-- `TELEGRAM_PS_BOT_TOKEN` = `8542903683:AAFcIbXqweq8b4Sqo2c7eaKsgkneZcivfio`
-- `TELEGRAM_PS_CHAT_ID` = `-1001003885398555`
+✅ `TELEGRAM_PS_BOT_TOKEN` = `8542903683:AAFcIbXqweq8b4Sqo2c7eaKsgkneZcivfio`
+✅ `TELEGRAM_PS_CHAT_ID` = `-1001003885398555`
 
-Una vez agregados, el workflow `Ofertas PS4/PS5` se ejecutará automáticamente cada 30 minutos.
+**El workflow `Ofertas PS4/PS5` se ejecutará automáticamente cada 30 minutos a partir de ahora.**
+
+---
+
+## 🎉 Plan Completado
+
+| Fase | Tarea | Status |
+|---|---|---|
+| 1 | Crear motor compartido (`amazon_ofertas_core.py`) | ✅ |
+| 2 | Refactor canal bebé | ✅ |
+| 3 | Crear canal PS4/PS5 (script + tests) | ✅ |
+| 4 | GitHub Actions workflows | ✅ |
+| 5 | Agregar secrets en GitHub | ✅ |
+
+**Proyecto en producción:** Ambos canales (Bebé y PS4/PS5) se ejecutarán automáticamente cada 30 minutos en GitHub Actions.
 
 ---
 
@@ -182,15 +195,18 @@ Una vez agregados, el workflow `Ofertas PS4/PS5` se ejecutará automáticamente 
 
 | Archivo | Acción | Estado |
 |---|---|---|
-| `amazon_ofertas_core.py` | CREAR | ✅ Hecho (Fase 1) |
-| `amazon_bebe_ofertas.py` | MODIFICAR (importar desde core, mismo comportamiento) | ✅ Hecho (Fase 2) |
-| `amazon_ps_ofertas.py` | CREAR | ✅ Hecho (Fase 3) |
+| `shared/amazon_ofertas_core.py` | CREAR | ✅ Hecho (Fase 1) |
+| `bebe/amazon_bebe_ofertas.py` | MODIFICAR (importar desde core) | ✅ Hecho (Fase 2) |
+| `ps/amazon_ps_ofertas.py` | CREAR (priorización videojuegos) | ✅ Hecho (Fase 3) |
 | `ps/posted_ps_deals.json` | CREAR (vacío `{}`) | ✅ Hecho (Fase 3) |
 | `ps/tests/test_amazon_ps_ofertas.py` | CREAR (59 tests) | ✅ Hecho (Fase 3) |
 | `ps/README.md` | CREAR (documentación) | ✅ Hecho (Fase 3) |
 | `.github/workflows/ofertas-ps.yml` | CREAR | ✅ Hecho (Fase 4) |
 | `.github/workflows/ofertas.yml` | MODIFICAR (añadir `git pull --rebase`) | ✅ Hecho (Fase 4) |
-| **GitHub Secrets** | AGREGAR `TELEGRAM_PS_BOT_TOKEN`, `TELEGRAM_PS_CHAT_ID` | ⏳ Fase 5 (MANUAL) |
+| **GitHub Secrets PS** | AGREGAR `TELEGRAM_PS_BOT_TOKEN`, `TELEGRAM_PS_CHAT_ID` | ✅ Hecho (Fase 5) |
+| **README.md** | ACTUALIZAR con nuevo canal PS | ✅ Hecho |
+| **CLAUDE.md** | ACTUALIZAR con nuevo canal PS | ✅ Hecho |
+| **PLAN_PS_CHANNEL.md** | DOCUMENTAR fases 1-5 | ✅ Hecho |
 
 ---
 
