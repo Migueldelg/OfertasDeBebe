@@ -1,4 +1,4 @@
-# Amazon Ofertas Bot — Plataforma Multi-Canal
+# RadarOfertas — Plataforma Multi-Canal
 
 Plataforma para crear **N canales independientes de ofertas en Telegram**, cada uno publicando automáticamente las mejores ofertas de Amazon.es en su nicho. Todos comparten el mismo motor (`amazon_ofertas_core.py`) y solo requieren un script de configuración propio.
 
@@ -78,7 +78,7 @@ Cada canal aplica de forma independiente 4 filtros:
 ## Archivos del Proyecto
 
 ```
-OfertasDeBebe/
+RadarOfertas/
 ├── shared/
 │   └── amazon_ofertas_core.py      ← Motor genérico compartido
 │
