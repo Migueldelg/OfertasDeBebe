@@ -163,15 +163,110 @@ Parámetro `umbral` en `titulos_similares()` del core (por defecto `0.5` = 50%).
       ├─ ¿Categoría en VERIFICAR_TITULOS y título similar a recientes? → Siguiente oferta
       └─ ✓ Guardar como mejor de esta categoría y pasar a siguiente categoría
 
-3. De todas las mejores por categoría (ordenadas por descuento):
+3. **Agrupar variantes** del mismo producto:
+   ├─ Detectar si dos productos son variantes (ej: FIFA 26 PS4 ↔ FIFA 26 PS5)
+   ├─ Representante: el de mayor descuento (desempate: valoraciones)
+   └─ Variantes adicionales: guardadas en campo `variantes_adicionales`
+
+4. De todas las mejores por categoría (ordenadas por descuento):
    └─ Para cada una:
       ├─ ¿Categoría en las últimas 4 publicadas? → Siguiente (si hay más opciones)
       └─ ✓ Seleccionar para publicar
 
-4. Si todas son de categorías recientes → publicar la de mayor descuento igualmente
+5. Si todas son de categorías recientes → publicar la de mayor descuento igualmente
 
-5. Publicar en Telegram y guardar estado
+6. Publicar en Telegram con formato especial si hay variantes:
+   - Múltiples links clicables (uno por cada variante)
+   - Identificadores auto-extraídos (PS4, AZUL, etc.)
+   - Guardar ASINs de todas las variantes en posted_deals para evitar re-publicar
+
+7. Guardar estado actualizado
 ```
+
+---
+
+## Sistema de Agrupamiento de Variantes
+
+Cuando dos productos son **variantes del mismo producto base**, el sistema los agrupa en una sola publicación con múltiples links.
+
+### Detección de Variantes
+
+Dos productos son variantes si:
+1. Sus palabras normalizadas tienen **intersección no vacía** (comparten base común)
+2. Sus **diferencias** consisten solo en `PALABRAS_VARIANTE` (colores, plataformas, etc.)
+
+```python
+# Ejemplos de variantes detectadas:
+son_variantes("FIFA 26 PS5", "FIFA 26 PS4")        → True ✓
+son_variantes("Chicco Rosa", "Chicco Azul")        → True ✓
+son_variantes("FIFA 26 PS5", "Mando DualSense")    → False ✗
+```
+
+**Insight clave:** PS5/PS4 son "invisibles" en normalización porque `normalizar_titulo()` extrae solo letras (regex `\b[a-záéíóúñü]+\b`), así que "PS5" → "ps" → descartado (≤2 letras). Esto hace que "FIFA 26 PS4" y "FIFA 26 PS5" normalicen ambos a `{fifa}`, permitiendo detección automática sin reglas especiales.
+
+### Conjunto de Palabras Variante
+
+```python
+PALABRAS_VARIANTE = {
+    # Colores
+    'rojo', 'roja', 'azul', 'verde', 'rosa', 'negro', 'negra',
+    'blanco', 'blanca', 'amarillo', 'amarilla', 'naranja',
+    'morado', 'morada', 'violeta', 'gris', 'beige', 'marron',
+    'dorado', 'dorada', 'plateado', 'plateada', 'lila', 'turquesa',
+    # Tamaños/Variantes
+    'mini', 'maxi',
+}
+```
+
+### Formato Telegram con Variantes
+
+**Con variantes:**
+```
+🎮 OFERTA JUEGOS PS5 🎮
+
+📦 FIFA 26 PS5
+
+💰 39,99€ <s>69,99€</s> (-43%)
+💰 34,99€ <s>58,99€</s> (-40%) (PS4)
+```
+
+**Sin variantes (preserva formato original):**
+```
+🎮 OFERTA JUEGOS PS5 🎮
+
+📦 Mando DualSense
+
+💰 Precio: 74,99€ → 59,99€ (-20%)
+
+🛒 Ver en Amazon
+```
+
+### Extracción Automática de Identificadores
+
+El código extrae automáticamente qué diferencia a cada variante:
+
+1. **Patrón 1:** Busca `PS#`, `Gen#`, etc. (letras+números: `[a-z]{1,3}\d+`)
+2. **Patrón 2:** Si no encuentra, extrae palabras normalizadas diferentes
+3. **Mostrada:** Aparece en paréntesis `(PS4)`, `(AZUL)` junto al precio
+
+```python
+# Ejemplos:
+"FIFA 26 PS4" → extrae "PS4" ✓
+"Chicco Azul" → extrae "AZUL" ✓
+"Mando Gen2" → extrae "GEN2" ✓
+```
+
+### Guardado de Variantes en Anti-Duplicados
+
+Cuando se publica un grupo con variantes:
+```python
+posted_deals[producto_principal['asin']] = datetime.now().isoformat()
+# Guardar también ASINs de variantes para evitar re-publicar
+for variante in producto_principal.get('variantes_adicionales', []):
+    posted_deals[variante['asin']] = datetime.now().isoformat()
+```
+
+Esto previene que cualquier variante se publique nuevamente en los próximos 48h.
 
 ---
 
@@ -194,6 +289,10 @@ Parámetro `umbral` en `titulos_similares()` del core (por defecto `0.5` = 50%).
 
 | Función | Descripción | Línea |
 |---------|-------------|-------|
+| `normalizar_titulo(titulo)` | Extrae palabras clave del título (normaliza a set) | ~130 |
+| `son_variantes(titulo1, titulo2)` | Detecta si dos productos son variantes del mismo producto | ~211 |
+| `agrupar_variantes(mejores_por_categoria)` | Agrupa variantes usando Union-Find; retorna lista con `variantes_adicionales` | ~235 |
+| `format_telegram_message(producto, categoria)` | Formatea mensaje Telegram con soporte para variantes | ~380 |
 | `obtener_prioridad_marca(titulo, marcas)` | Detecta si un título contiene una marca de la lista; retorna 1 o 0 | ~179 |
 | `titulo_similar_a_recientes(titulo, lista)` | Verifica similitud con últimos 4 títulos | ~173 |
 | `titulos_similares(t1, t2, umbral)` | Compara dos títulos con umbral configurable (default 50%) | ~157 |

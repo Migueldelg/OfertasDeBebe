@@ -17,10 +17,11 @@ ps/
 ## Características
 
 ✅ **Videojuegos priorizados** - Siempre publica juegos PS4/PS5 antes que accesorios
-✅ **Anti-duplicados 48h** - No repite el mismo ASIN en 48 horas
+✅ **Agrupamiento de variantes** - Automáticamente agrupa PS4/PS5 en un solo mensaje con links paralelos
+✅ **Anti-duplicados 48h** - No repite el mismo ASIN en 48 horas (incluyendo variantes)
 ✅ **Anti-títulos similares** - Evita publicar juegos similares repetidamente
 ✅ **Modo desarrollo** - Publica en canal de pruebas sin modificar el JSON
-✅ **Tests completos** - 59 tests que cubren toda la lógica
+✅ **Tests completos** - 79 tests que cubren toda la lógica incluyendo variantes
 
 ## Configuración
 
@@ -84,13 +85,48 @@ python3 -m pytest ps/tests/test_amazon_ps_ofertas.py::TestObtenerPrioridadMarca 
    ├─ Filtrar solo los que tienen descuento
    └─ Elegir el mejor según: descuento ↓ → marca_prioritaria ↓ → valoraciones ↓ → ventas ↓
 
-2. De todos los mejores por categoría:
+2. Agrupar variantes del mismo producto (ej: FIFA 26 PS4 ↔ FIFA 26 PS5)
+   ├─ Representante: producto con mayor descuento
+   └─ Variantes adicionales: guardadas para mostrar en Telegram
+
+3. De todos los mejores por categoría:
    ├─ Prefiere videojuegos sobre accesorios
    ├─ Evita repetir las últimas 4 categorías (si hay alternativas)
-   ├─ No republica ASINs en <48h
+   ├─ No republica ASINs en <48h (incluyendo variantes)
    └─ Para Juegos PS4/PS5: evita títulos similares a los últimos publicados
 
-3. Publicar en Telegram y guardar estado
+4. Publicar en Telegram con formato especial si hay variantes
+5. Guardar estado (ASINs de todas las variantes)
+```
+
+### Formato Telegram con Variantes
+
+Cuando se detectan variantes (ej: PS5 vs PS4), el mensaje muestra **múltiples links paralelos**:
+
+```
+🎮 OFERTA JUEGOS PS5 🎮
+
+📦 FIFA 26 PS5
+
+💰 39,99€ <s>69,99€</s> (-43%)
+💰 34,99€ <s>58,99€</s> (-40%) (PS4)
+```
+
+**Características:**
+- ✅ Ambos precios son **clickeables** (no hay "También disponible")
+- ✅ Identificadores automáticos: `(PS4)`, `(PS5)`, `(AZUL)`, etc.
+- ✅ Precios anteriores tachados en ambas opciones
+- ✅ Descuentos mostrados en ambas variantes
+
+**Formato original sin variantes (preservado):**
+```
+🎮 OFERTA JUEGOS PS5 🎮
+
+📦 Mando DualSense
+
+💰 Precio: 74,99€ → 59,99€ (-20%)
+
+🛒 Ver en Amazon
 ```
 
 ## Categorías
@@ -179,6 +215,8 @@ tail -50 ps/ofertas_ps.log
 | Límite semanal | ✅ Tronas, Cámaras, Chupetes, Vajilla | ❌ Ninguno |
 | Videojuegos | ❌ No aplica | ✅ Priorizados |
 | Anti-títulos similares | Chupetes, Juguetes | Juegos PS5, Juegos PS4 |
+| Agrupamiento de variantes | ✅ Ambos canales | ✅ Ambos canales |
+| Tests | 84 tests | 79 tests |
 
 ## Próximos Pasos (GitHub Actions)
 

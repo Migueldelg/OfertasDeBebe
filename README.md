@@ -31,12 +31,22 @@ Corre en **GitHub Actions** sin necesidad de servidor propio.
                           ↓
 2. De cada categoría, selecciona la mejor oferta (mayor descuento, valoraciones altas)
                           ↓
-3. De todas las mejores, elige la de MAYOR DESCUENTO (con prioridad a marcas conocidas)
+3. Agrupa variantes del mismo producto (ej: FIFA 26 PS4 ↔ FIFA 26 PS5)
                           ↓
-4. Publica 1 oferta en Telegram con foto y enlace de afiliado
+4. De todas las mejores, elige la de MAYOR DESCUENTO (con prioridad a marcas conocidas)
+                          ↓
+5. Publica en Telegram con links paralelos para cada variante:
+   - PS5: 39,99€ → enlace Amazon PS5
+   - PS4: 34,99€ → enlace Amazon PS4 (PS4)
 ```
 
-Cada canal tiene su propio estado anti-duplicados (`posted_*.json`) y sus propios secrets de Telegram, por lo que funcionan de forma completamente independiente.
+**Sistema de Agrupamiento de Variantes:**
+- Detecta automáticamente variantes usando normalización de títulos (ej: colores, plataformas)
+- Una sola publicación en Telegram con **múltiples links clicables** (no "También disponible")
+- Representante seleccionado por mayor descuento, variantes identificadas automáticamente
+- Ambos ASINs guardados en anti-duplicados (evita re-publicar cualquier variante)
+
+Cada canal tiene su propio estado anti-duplicados (`posted_*.json`) y sus propios secrets de Telegram, por lo que funcionan de forma completamente independientes.
 
 ---
 
@@ -69,9 +79,10 @@ Para **crear un nuevo canal** basta con una carpeta que contenga:
 
 ## Sistema Anti-Repetición
 
-Cada canal aplica de forma independiente 4 filtros:
+Cada canal aplica de forma independiente 5 filtros:
 
 - **Anti-ASIN (48h):** No repite el mismo producto en 48 horas
+- **Anti-Variante:** Cuando agrupa variantes, guarda todos los ASINs para evitar re-publicar
 - **Anti-Categoría:** Evita las últimas 4 categorías publicadas
 - **Anti-Título Similar:** En categorías configuradas, evita títulos con >50% palabras comunes
 - **Límite Semanal:** Categorías configurables para publicarse solo 1 vez por semana
@@ -90,14 +101,14 @@ RadarOfertas/
 │   ├── posted_bebe_deals.json      ← Estado anti-duplicados del canal bebé
 │   ├── README.md                   ← Documentación del canal bebé
 │   └── tests/
-│       └── test_amazon_bebe_ofertas.py ← 64 tests automatizados
+│       └── test_amazon_bebe_ofertas.py ← 84 tests automatizados (+ 20 tests de variantes)
 │
 ├── ps/
 │   ├── amazon_ps_ofertas.py        ← Canal PS4/PS5 (Fase 3 ✅)
 │   ├── posted_ps_deals.json        ← Estado anti-duplicados del canal PS
 │   ├── README.md                   ← Documentación del canal PS
 │   └── tests/
-│       └── test_amazon_ps_ofertas.py ← 59 tests automatizados
+│       └── test_amazon_ps_ofertas.py ← 79 tests automatizados (+ 20 tests de variantes)
 │
 ├── requirements.txt                ← Dependencias Python (producción)
 ├── requirements-dev.txt            ← Dependencias de desarrollo (pytest)
@@ -206,13 +217,13 @@ source .env && python3 ps/amazon_ps_ofertas.py --continuo
 ```bash
 pip install -r requirements-dev.txt
 
-# Todos los tests
+# Todos los tests (163 tests totales: 84 bebe + 79 PS)
 python3 -m pytest -v
 
-# Solo tests del canal bebé
+# Solo tests del canal bebé (84 tests: 64 originales + 20 de variantes)
 python3 -m pytest bebe/tests/ -v
 
-# Solo tests del canal PS
+# Solo tests del canal PS (79 tests: 59 originales + 20 de variantes)
 python3 -m pytest ps/tests/ -v
 
 # Con cobertura
