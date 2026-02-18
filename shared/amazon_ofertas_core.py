@@ -207,6 +207,124 @@ def titulo_similar_a_recientes(titulo, ultimos_titulos):
     return False
 
 
+# Constante para detectar variantes (colores, tamaños, etc.)
+PALABRAS_VARIANTE = {
+    'rojo', 'roja', 'azul', 'verde', 'rosa', 'negro', 'negra',
+    'blanco', 'blanca', 'amarillo', 'amarilla', 'naranja',
+    'morado', 'morada', 'violeta', 'gris', 'beige', 'marron',
+    'dorado', 'dorada', 'plateado', 'plateada', 'lila', 'turquesa',
+    'mini', 'maxi',
+}
+
+
+def son_variantes(titulo1, titulo2):
+    """
+    Determina si dos productos son variantes del mismo producto base.
+    Dos productos son variantes si sus títulos normalizados comparten
+    una base común y solo difieren en palabras de variante (colores, etc.).
+
+    Nota: identificadores de plataforma como PS4/PS5 son automáticamente
+    invisibles porque el regex de normalizar_titulo extrae solo letras.
+    """
+    palabras1 = normalizar_titulo(titulo1)
+    palabras2 = normalizar_titulo(titulo2)
+
+    if not palabras1 or not palabras2:
+        return False
+
+    comunes = palabras1 & palabras2
+    if not comunes:
+        return False
+
+    solo_en_1 = palabras1 - palabras2
+    solo_en_2 = palabras2 - palabras1
+
+    return solo_en_1.issubset(PALABRAS_VARIANTE) and solo_en_2.issubset(PALABRAS_VARIANTE)
+
+
+def agrupar_variantes(mejores_por_categoria):
+    """
+    Agrupa productos variantes en la lista de mejores por categoría.
+
+    Input/Output: lista de dicts {'producto': ..., 'categoria': ...}
+    El representante es el de mayor descuento (desempate: valoraciones).
+    El dict del representante recibe 'variantes_adicionales': lista de
+    {asin, titulo, url, precio, precio_anterior, descuento}.
+    Se usa .copy() para no mutar el dict original.
+    """
+    if not mejores_por_categoria:
+        return []
+
+    n = len(mejores_por_categoria)
+    padre = list(range(n))
+
+    def encontrar(x):
+        while padre[x] != x:
+            padre[x] = padre[padre[x]]
+            x = padre[x]
+        return x
+
+    def unir(x, y):
+        px, py = encontrar(x), encontrar(y)
+        if px != py:
+            padre[px] = py
+
+    for i in range(n):
+        t_i = mejores_por_categoria[i]['producto']['titulo']
+        for j in range(i + 1, n):
+            t_j = mejores_por_categoria[j]['producto']['titulo']
+            if son_variantes(t_i, t_j):
+                unir(i, j)
+                log.info(
+                    "Variantes detectadas: '%s' ↔ '%s'",
+                    t_i[:40], t_j[:40]
+                )
+
+    grupos = {}
+    for i in range(n):
+        grupos.setdefault(encontrar(i), []).append(i)
+
+    resultado = []
+    for indices in grupos.values():
+        if len(indices) == 1:
+            resultado.append(mejores_por_categoria[indices[0]])
+            continue
+
+        indices_ord = sorted(
+            indices,
+            key=lambda i: (
+                mejores_por_categoria[i]['producto']['descuento'],
+                mejores_por_categoria[i]['producto']['valoraciones'],
+            ),
+            reverse=True,
+        )
+        idx_rep = indices_ord[0]
+        entrada_rep = mejores_por_categoria[idx_rep]
+        producto_rep = entrada_rep['producto'].copy()
+
+        producto_rep['variantes_adicionales'] = [
+            {
+                'asin': mejores_por_categoria[k]['producto']['asin'],
+                'titulo': mejores_por_categoria[k]['producto']['titulo'],
+                'url': mejores_por_categoria[k]['producto']['url'],
+                'precio': mejores_por_categoria[k]['producto']['precio'],
+                'precio_anterior': mejores_por_categoria[k]['producto'].get('precio_anterior'),
+                'descuento': mejores_por_categoria[k]['producto']['descuento'],
+            }
+            for k in indices_ord[1:]
+        ]
+
+        log.info(
+            "Grupo de variantes: representante '%s' + %d variante(s): %s",
+            producto_rep['titulo'][:35],
+            len(producto_rep['variantes_adicionales']),
+            ", ".join(v['titulo'][:25] for v in producto_rep['variantes_adicionales']),
+        )
+        resultado.append({'producto': producto_rep, 'categoria': entrada_rep['categoria']})
+
+    return resultado
+
+
 def obtener_prioridad_marca(titulo, marcas):
     """
     Extrae la marca del titulo y retorna su prioridad según la lista de marcas.
@@ -284,16 +402,65 @@ def format_telegram_message(producto, categoria):
         except:
             descuento_texto = ""
 
+    variantes = producto.get('variantes_adicionales', [])
+
     message = f"{emoji} <b>OFERTA {categoria_nombre.upper()}</b> {emoji}\n\n"
     message += f"📦 <b>{titulo}</b>\n\n"
 
-    if precio_anterior:
-        message += f"💰 Precio: <s>{precio_anterior}</s> → <b>{precio}</b>{descuento_texto}\n"
-    else:
-        message += f"💰 Precio: <b>{precio}</b>\n"
+    # Si hay variantes, mostrar todas las opciones de forma paralela
+    if variantes:
+        # Función auxiliar para extraer identificador de variante (ej: 'PS5', 'Azul')
+        def extraer_variante_id(titulo_completo, titulo_base):
+            """
+            Extrae identificador que diferencia las variantes.
+            Busca plataformas (PS5, PS4, etc.) o colores no presentes en la base.
+            """
+            # Buscar primero palabras con patrón PSX, GenX, etc. (letra+números)
+            # Usar patrón más específico: 1-2 letras seguidas de números
+            palabras_plataforma = re.findall(r'\b([a-záéíóúñü]{1,3}\d+)\b', titulo_completo, re.IGNORECASE)
+            if palabras_plataforma:
+                return palabras_plataforma[0].upper()
 
-    # Usar comillas dobles en atributos HTML
-    message += f'\n🛒 <a href="{url}">Ver en Amazon</a>'
+            # Fallback: extraer palabras del título que no estén en la base
+            palabras_base = normalizar_titulo(titulo_base)
+            palabras_completo = normalizar_titulo(titulo_completo)
+            diferencia = palabras_completo - palabras_base
+            if diferencia:
+                return list(diferencia)[0].upper()
+
+            return ""
+
+        # Producto principal
+        if precio_anterior:
+            message += f"💰 <a href=\"{url}\"><b>{precio}</b></a> <s>{precio_anterior}</s>{descuento_texto}\n"
+        else:
+            message += f"💰 <a href=\"{url}\"><b>{precio}</b></a>\n"
+
+        # Variantes adicionales (todas con link y su identificador)
+        for variante in variantes:
+            var_url = html.escape(variante['url'])
+            var_titulo = variante['titulo']
+            var_precio = variante.get('precio', '')
+            var_precio_anterior = variante.get('precio_anterior')
+            var_desc = variante.get('descuento', 0)
+            var_desc_texto = f" (-{int(var_desc)}%)" if var_desc else ""
+
+            # Extraer identificador de esta variante
+            var_id_label = extraer_variante_id(var_titulo, titulo)
+            var_id_texto = f" ({var_id_label})" if var_id_label else ""
+
+            if var_precio_anterior:
+                message += f"💰 <a href=\"{var_url}\"><b>{var_precio}</b></a> <s>{var_precio_anterior}</s>{var_desc_texto}{var_id_texto}\n"
+            else:
+                message += f"💰 <a href=\"{var_url}\"><b>{var_precio}</b></a>{var_id_texto}\n"
+    else:
+        # Sin variantes: formato original
+        if precio_anterior:
+            message += f"💰 Precio: <s>{precio_anterior}</s> → <b>{precio}</b>{descuento_texto}\n"
+        else:
+            message += f"💰 Precio: <b>{precio}</b>\n"
+
+        message += f'\n🛒 <a href="{url}">Ver en Amazon</a>'
 
     return message
 

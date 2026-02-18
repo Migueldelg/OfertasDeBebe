@@ -23,6 +23,7 @@ from shared.amazon_ofertas_core import (
     normalizar_titulo,
     titulos_similares,
     titulo_similar_a_recientes,
+    agrupar_variantes,
     format_telegram_message,
     obtener_prioridad_marca as _obtener_prioridad_marca_core,
     send_telegram_message as _send_telegram_message_core,
@@ -279,6 +280,9 @@ def buscar_y_publicar_ofertas():
     )
     mejores_por_categoria = mejores_videojuegos + mejores_por_categoria
 
+    # Agrupar variantes (ej: FIFA 26 PS4 + FIFA 26 PS5 → un solo grupo)
+    mejores_por_categoria = agrupar_variantes(mejores_por_categoria)
+
     # De entre las mejores ofertas, seleccionar la de mayor descuento
     if not mejores_por_categoria:
         log.info("")
@@ -359,6 +363,9 @@ def buscar_y_publicar_ofertas():
     ofertas_publicadas = 0
     if exito:
         posted_deals[producto['asin']] = datetime.now().isoformat()
+        # Guardar también ASINs de variantes agrupadas para evitar republicarlas
+        for variante in producto.get('variantes_adicionales', []):
+            posted_deals[variante['asin']] = datetime.now().isoformat()
         # Añadir categoria al inicio de la lista y mantener solo las ultimas 4
         ultimas_categorias.insert(0, categoria['nombre'])
         ultimas_categorias = ultimas_categorias[:4]

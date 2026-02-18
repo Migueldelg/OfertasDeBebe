@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import ps.amazon_ps_ofertas as bot
+import shared.amazon_ofertas_core as core
 
 
 # ---------------------------------------------------------------------------
@@ -535,3 +536,288 @@ class TestPrioridadVideojuegos:
         for cat in bot.CATEGORIAS_PS:
             assert 'tipo' in cat
             assert cat['tipo'] in ['videojuego', 'accesorio']
+
+
+# ---------------------------------------------------------------------------
+# son_variantes - Detecta variantes de productos
+# ---------------------------------------------------------------------------
+
+class TestSonVariantes:
+    def test_ps4_y_ps5_mismo_juego_son_variantes(self):
+        """PS4 y PS5 son variantes (plataformas invisibles en normalización)."""
+        assert core.son_variantes("FIFA 26 PS5", "FIFA 26 PS4")
+        assert core.son_variantes("EA SPORTS FC 26 Standard Edition PS5", "EA SPORTS FC 26 Standard Edition PS4")
+
+    def test_colores_distintos_son_variantes(self):
+        """Productos que solo difieren en color son variantes."""
+        assert core.son_variantes("Chicco NaturalFeeling Biberón Rosa", "Chicco NaturalFeeling Biberón Azul")
+        assert core.son_variantes("Mando DualSense Blanco", "Mando DualSense Negro")
+
+    def test_productos_distintos_no_son_variantes(self):
+        """Productos sin base común no son variantes."""
+        assert not core.son_variantes("FIFA 26 PS5", "Mando DualSense")
+        assert not core.son_variantes("Pañales Dodot", "Toallitas Pampers")
+
+    def test_sin_base_comun_no_son_variantes(self):
+        """Sin palabras en común → no son variantes."""
+        assert not core.son_variantes("PlayStation 5", "Xbox Series X")
+
+    def test_diferencia_no_variante_no_agrupa(self):
+        """Si la diferencia no es solo variantes, no se agrupan."""
+        # Standard Edition vs Champions Edition (ambos son "edition", solo en uno está Champion)
+        # championship no está en PALABRAS_VARIANTE
+        assert not core.son_variantes("FIFA 26 Standard Edition PS5", "FIFA 26 Champions Edition PS5")
+
+    def test_titulo_vacio_devuelve_false(self):
+        """Título vacío o con solo palabras cortas → False."""
+        assert not core.son_variantes("", "FIFA 26")
+        assert not core.son_variantes("FIFA 26", "")
+        # Palabras muy cortas que se descartan
+        assert not core.son_variantes("a b c", "x y z")
+
+
+# ---------------------------------------------------------------------------
+# agrupar_variantes - Agrupa productos variantes
+# ---------------------------------------------------------------------------
+
+class TestAgruparVariantes:
+    def test_lista_vacia_devuelve_vacia(self):
+        """Lista vacía → lista vacía."""
+        assert core.agrupar_variantes([]) == []
+
+    def test_producto_sin_variante_pasa_sin_cambios(self):
+        """Un solo producto sin variantes → pasa sin cambios, sin campo variantes_adicionales."""
+        entrada = {
+            'producto': make_producto(asin='B001', titulo='FIFA 26 PS5'),
+            'categoria': make_categoria()
+        }
+        resultado = core.agrupar_variantes([entrada])
+        assert len(resultado) == 1
+        assert resultado[0]['producto']['asin'] == 'B001'
+        assert 'variantes_adicionales' not in resultado[0]['producto']
+
+    def test_dos_variantes_se_agrupan_en_uno(self):
+        """Dos variantes → un solo grupo con variantes_adicionales."""
+        entrada1 = {
+            'producto': make_producto(asin='B001', titulo='FIFA 26 PS5', descuento=43, valoraciones=2000),
+            'categoria': make_categoria()
+        }
+        entrada2 = {
+            'producto': make_producto(asin='B002', titulo='FIFA 26 PS4', descuento=40, valoraciones=1500),
+            'categoria': make_categoria()
+        }
+        resultado = core.agrupar_variantes([entrada1, entrada2])
+        assert len(resultado) == 1
+        assert resultado[0]['producto']['asin'] == 'B001'  # El de mayor descuento
+        assert len(resultado[0]['producto']['variantes_adicionales']) == 1
+        assert resultado[0]['producto']['variantes_adicionales'][0]['asin'] == 'B002'
+
+    def test_representante_es_el_de_mayor_descuento(self):
+        """El representante es el de mayor descuento."""
+        entrada1 = {
+            'producto': make_producto(asin='B001', titulo='FIFA 26 PS5', descuento=40),
+            'categoria': make_categoria()
+        }
+        entrada2 = {
+            'producto': make_producto(asin='B002', titulo='FIFA 26 PS4', descuento=43),
+            'categoria': make_categoria()
+        }
+        resultado = core.agrupar_variantes([entrada1, entrada2])
+        assert len(resultado) == 1
+        assert resultado[0]['producto']['asin'] == 'B002'  # 43% > 40%
+
+    def test_desempate_igual_descuento_usa_valoraciones(self):
+        """Igual descuento → el de mayor valoraciones es representante."""
+        entrada1 = {
+            'producto': make_producto(asin='B001', titulo='FIFA 26 PS5', descuento=42, valoraciones=1500),
+            'categoria': make_categoria()
+        }
+        entrada2 = {
+            'producto': make_producto(asin='B002', titulo='FIFA 26 PS4', descuento=42, valoraciones=2000),
+            'categoria': make_categoria()
+        }
+        resultado = core.agrupar_variantes([entrada1, entrada2])
+        assert len(resultado) == 1
+        assert resultado[0]['producto']['asin'] == 'B002'  # Más valoraciones
+
+    def test_variante_adicional_tiene_todos_los_campos(self):
+        """La variante adicional incluye: asin, titulo, url, precio, descuento."""
+        entrada1 = {
+            'producto': make_producto(asin='B001', titulo='FIFA 26 PS5', descuento=43),
+            'categoria': make_categoria()
+        }
+        entrada2 = {
+            'producto': make_producto(asin='B002', titulo='FIFA 26 PS4', descuento=40, precio='34,99€'),
+            'categoria': make_categoria()
+        }
+        resultado = core.agrupar_variantes([entrada1, entrada2])
+        variante = resultado[0]['producto']['variantes_adicionales'][0]
+        assert 'asin' in variante
+        assert 'titulo' in variante
+        assert 'url' in variante
+        assert 'precio' in variante
+        assert 'descuento' in variante
+        assert variante['asin'] == 'B002'
+        assert variante['precio'] == '34,99€'
+        assert variante['descuento'] == 40
+
+    def test_no_muta_producto_original(self):
+        """El producto original no es mutado (no gana campo variantes_adicionales)."""
+        producto_original = make_producto(asin='B001', titulo='FIFA 26 PS5')
+        entrada1 = {'producto': producto_original, 'categoria': make_categoria()}
+        entrada2 = {
+            'producto': make_producto(asin='B002', titulo='FIFA 26 PS4'),
+            'categoria': make_categoria()
+        }
+        core.agrupar_variantes([entrada1, entrada2])
+        # El producto original no debe tener el campo
+        assert 'variantes_adicionales' not in producto_original
+
+    def test_productos_distintos_no_se_agrupan(self):
+        """Productos sin relación de variantes → lista resultado tiene 2 elementos."""
+        entrada1 = {
+            'producto': make_producto(asin='B001', titulo='FIFA 26 PS5'),
+            'categoria': make_categoria()
+        }
+        entrada2 = {
+            'producto': make_producto(asin='B002', titulo='Mando DualSense'),
+            'categoria': make_categoria()
+        }
+        resultado = core.agrupar_variantes([entrada1, entrada2])
+        assert len(resultado) == 2
+        assert 'variantes_adicionales' not in resultado[0]['producto']
+        assert 'variantes_adicionales' not in resultado[1]['producto']
+
+    def test_categoria_del_representante_se_preserva(self):
+        """La categoría del representante se mantiene en el resultado."""
+        cat_videojuegos = make_categoria(nombre='Juegos PS5', emoji='🎮')
+        entrada1 = {
+            'producto': make_producto(asin='B001', titulo='FIFA 26 PS5'),
+            'categoria': cat_videojuegos
+        }
+        entrada2 = {
+            'producto': make_producto(asin='B002', titulo='FIFA 26 PS4'),
+            'categoria': make_categoria()
+        }
+        resultado = core.agrupar_variantes([entrada1, entrada2])
+        assert resultado[0]['categoria']['nombre'] == 'Juegos PS5'
+
+
+# ---------------------------------------------------------------------------
+# format_telegram_message con variantes
+# ---------------------------------------------------------------------------
+
+class TestFormatTelegramMessageConVariantes:
+    def test_sin_variantes_formato_original(self):
+        """Sin variantes → mantiene el formato original con 🛒."""
+        producto = make_producto(titulo='FIFA 26 PS5')
+        categoria = make_categoria()
+        mensaje = core.format_telegram_message(producto, categoria)
+        assert '🛒' in mensaje
+        assert 'Ver en Amazon</a>' in mensaje
+        assert 'variantes_adicionales' not in str(producto)
+
+    def test_con_variante_ambas_con_links_paralelos(self):
+        """Con variantes → ambas versiones tienen links, formato paralelo con identificadores."""
+        producto = make_producto(
+            titulo='FIFA 26 PS5',
+            precio='39,99€',
+            precio_anterior='69,99€',
+            descuento=43,
+            variantes_adicionales=[
+                {
+                    'asin': 'B002',
+                    'titulo': 'FIFA 26 PS4',
+                    'url': 'https://amazon.es/dp/B002',
+                    'precio': '34,99€',
+                    'precio_anterior': '58,99€',
+                    'descuento': 40,
+                }
+            ]
+        )
+        categoria = make_categoria()
+        mensaje = core.format_telegram_message(producto, categoria)
+        # Ambos precios deben estar
+        assert '39,99€' in mensaje
+        assert '34,99€' in mensaje
+        # Ambos deben estar linkados (href aparece 2 veces)
+        assert mensaje.count('href=') >= 2
+        # Debe mostrar identificadores de variante (PS4 explícito)
+        assert 'PS4' in mensaje
+        # No debe haber 🛒 único al final (ese es formato sin variantes)
+        assert '\n🛒 Ver en Amazon</a>' not in mensaje
+
+    def test_variante_con_precio_anterior(self):
+        """La variante muestra precio anterior tachado cuando aplica."""
+        producto = make_producto(
+            titulo='Producto',
+            precio='20€',
+            precio_anterior='30€',
+            variantes_adicionales=[
+                {
+                    'asin': 'B002',
+                    'titulo': 'Variante',
+                    'url': 'https://amazon.es/dp/B002',
+                    'precio': '25€',
+                    'precio_anterior': '35€',
+                    'descuento': 28,
+                }
+            ]
+        )
+        categoria = make_categoria()
+        mensaje = core.format_telegram_message(producto, categoria)
+        # Ambos precios anteriores deben estar tachados
+        assert '<s>30€</s>' in mensaje
+        assert '<s>35€</s>' in mensaje
+        # Ambos precios nuevos en negrita (dentro del link)
+        assert '20€' in mensaje
+        assert '25€' in mensaje
+
+    def test_escapa_urls_en_variantes(self):
+        """Las URLs en variantes se escapan correctamente."""
+        producto = make_producto(
+            titulo='Producto',
+            variantes_adicionales=[
+                {
+                    'asin': 'B002',
+                    'titulo': 'Variante',
+                    'url': 'https://amazon.es/dp/B002?tag=test&foo=bar',
+                    'precio': '10€',
+                    'descuento': 10,
+                }
+            ]
+        )
+        categoria = make_categoria()
+        mensaje = core.format_telegram_message(producto, categoria)
+        # Debe escapar caracteres especiales en URL
+        assert 'href=' in mensaje
+        assert 'amazon.es' in mensaje
+
+    def test_multiples_variantes_todas_con_links(self):
+        """Con múltiples variantes, todas aparecen con links 💰."""
+        producto = make_producto(
+            titulo='Mando',
+            variantes_adicionales=[
+                {
+                    'asin': 'B002',
+                    'titulo': 'Mando Blanco',
+                    'url': 'https://amazon.es/dp/B002',
+                    'precio': '60€',
+                    'descuento': 20,
+                },
+                {
+                    'asin': 'B003',
+                    'titulo': 'Mando Negro',
+                    'url': 'https://amazon.es/dp/B003',
+                    'precio': '65€',
+                    'descuento': 15,
+                }
+            ]
+        )
+        categoria = make_categoria()
+        mensaje = core.format_telegram_message(producto, categoria)
+        # 3 links totales: principal + 2 variantes
+        assert mensaje.count('href=') == 3
+        # Todos los precios presentes
+        assert '60€' in mensaje
+        assert '65€' in mensaje
