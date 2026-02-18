@@ -66,6 +66,9 @@ CATEGORIAS_VERIFICAR_TITULOS = ["Juegos PS5", "Juegos PS4"]
 # Categorias que solo se publican una vez por semana (no aplica en PS)
 CATEGORIAS_LIMITE_SEMANAL = []
 
+# Límite de 3 días para cualquier accesorio (solo una categoría de accesorios cada 3 días)
+LIMITE_ACCESORIOS_DIAS = 3
+
 # Marcas prioritarias (se prefieren cuando hay igualdad de descuento)
 MARCAS_PRIORITARIAS = ["sony", "playstation", "nacon", "thrustmaster", "razer", "hyperx"]
 
@@ -162,6 +165,24 @@ def buscar_y_publicar_ofertas():
 
     now = datetime.now()
     una_semana = timedelta(days=7)
+    tres_dias = timedelta(days=LIMITE_ACCESORIOS_DIAS)
+
+    # Verificar si se publicó un accesorio en los últimos 3 días
+    accesorios_bloqueados = False
+    ultima_pub_accesorio_str = categorias_semanales.get("_accesorios_ultima_pub")
+    if ultima_pub_accesorio_str:
+        try:
+            ultima_pub_accesorio = datetime.fromisoformat(ultima_pub_accesorio_str)
+            tiempo_transcurrido = now - ultima_pub_accesorio
+            if tiempo_transcurrido < tres_dias:
+                accesorios_bloqueados = True
+                dias_restantes = (tres_dias - tiempo_transcurrido).days + 1
+                log.info(
+                    "Límite de 3 días para accesorios: última publicación de accesorio el %s (hace %d días, faltan ~%d días)",
+                    ultima_pub_accesorio.strftime('%d/%m %H:%M'), tiempo_transcurrido.days, dias_restantes
+                )
+        except (ValueError, TypeError):
+            pass
 
     # Recopilar la mejor oferta de cada categoria
     mejores_por_categoria = []
@@ -170,6 +191,11 @@ def buscar_y_publicar_ofertas():
     for categoria in CATEGORIAS_PS:
         log.info("")
         log.info("--- Categoria: %s ---", categoria['nombre'])
+
+        # Verificar límite de 3 días para accesorios
+        if accesorios_bloqueados and categoria['tipo'] == 'accesorio':
+            log.info("  SALTADA por límite de 3 días para accesorios")
+            continue
 
         # Verificar limite semanal para ciertas categorias
         if categoria['nombre'] in CATEGORIAS_LIMITE_SEMANAL:
@@ -381,6 +407,11 @@ def buscar_y_publicar_ofertas():
         if categoria['nombre'] in CATEGORIAS_LIMITE_SEMANAL:
             categorias_semanales[categoria['nombre']] = datetime.now().isoformat()
             log.debug("Timestamp de limite semanal actualizado para categoria '%s'", categoria['nombre'])
+
+        # Si es un accesorio, guardar el timestamp de última publicación de accesorio
+        if categoria['tipo'] == 'accesorio':
+            categorias_semanales["_accesorios_ultima_pub"] = datetime.now().isoformat()
+            log.debug("Timestamp de límite de 3 días para accesorios actualizado")
 
         ofertas_publicadas = 1
     else:
