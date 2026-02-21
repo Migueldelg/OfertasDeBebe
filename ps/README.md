@@ -23,7 +23,7 @@ ps/
 ✅ **Agrupamiento de variantes** - Automáticamente agrupa PS4/PS5 en un solo mensaje con links paralelos
 ✅ **Anti-duplicados 96h** - No repite el mismo ASIN en 96 horas (incluyendo variantes)
 ✅ **Anti-títulos similares** - Evita publicar juegos similares repetidamente
-✅ **Límite global 7 días** - Una publicación cada 7 días (oferta o preorden)
+✅ **Independencia de preórdenes** - Funciona de forma desacoplada (cada una tiene su propia ventana)
 
 ### Búsqueda de Preórdenes 🆕
 ✅ **Ejecución paralela** - Se ejecuta cada 30 min junto con ofertas
@@ -156,7 +156,7 @@ El canal PS incluye una búsqueda paralela de **próximos lanzamientos y preórd
 - Detecta preórdenes por patrones HTML: "próximamente", "disponible el", "preventa", "preorder"
 - Publica **hasta 3 preórdenes** por ciclo (si están disponibles)
 - **No repite en 48 horas** (ventana independiente de ofertas)
-- **Respeta límite global de 7 días** (solo UNA publicación cada 7 días: oferta O preorden)
+- **Funciona de forma independiente** de las ofertas normales (pueden publicarse el mismo día al mismo canal)
 
 ### Formato de Preorden
 
@@ -187,11 +187,11 @@ Almacena los preórdenes publicados con una **ventana de 48 horas** (separada de
 }
 ```
 
-**Coordinación con ofertas:**
-- Ambos comparten el timestamp `_ultima_publicacion_global` en `posted_ps_deals.json`
-- Si ofertas publican → preórdenes bloqueadas 7 días
-- Si preórdenes publican → ofertas bloqueadas 7 días
-- Sistema automático sin locks manuales
+**Independencia respecto a ofertas:**
+- Cada flujo tiene su propio JSON de estado (`posted_ps_deals.json` vs `posted_ps_prereservas.json`)
+- Ofertas y preórdenes se publican de forma completamente desacoplada
+- Pueden publicarse el mismo día, hora o minuto sin bloquearse mutuamente
+- Cada una respeta solo su propia ventana de deduplicación (96h vs 48h)
 
 Para más detalles sobre debugging y ajustes, ver **`PRERESERVAS_README.md`**.
 
@@ -345,8 +345,8 @@ python3 -m pytest ps/tests/ -vv
 
 - ✅ **Fase 1:** Búsqueda de ofertas (videojuegos priorizados)
 - ✅ **Fase 2:** Agrupamiento de variantes (PS4 + PS5)
-- ✅ **Fase 3:** Límite global de 7 días entre publicaciones
-- ✅ **Fase 4:** Búsqueda paralela de preórdenes 🆕
+- ✅ **Fase 3:** Límite global de 7 días entre publicaciones (REMOVIDO: ahora son independientes ⚡)
+- ✅ **Fase 4:** Búsqueda paralela de preórdenes 🆕 (desacoplada totalmente)
 
 ---
 

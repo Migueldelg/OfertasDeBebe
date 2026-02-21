@@ -7,7 +7,7 @@ La búsqueda de preórdenes es un sistema paralelo a la búsqueda de ofertas que
 1. **Se ejecuta cada 30 minutos** en el mismo ciclo que las ofertas
 2. **Busca en 2 categorías**: "Próximos PS5" y "Próximos PS4"
 3. **Publica hasta 3 preórdenes** por ciclo exitoso
-4. **Respeta límite global de 7 días** compartido con ofertas
+4. **Funciona de forma independiente** de las ofertas (cada una con su propia ventana de deduplicación)
 
 ## 🔍 Cómo Se Detectan Preórdenes
 
@@ -112,11 +112,12 @@ Estructura:
 - **Valor**: ISO timestamp de cuándo fue publicado
 - **Ventana**: 48 horas (después expira y puede reciclarse)
 
-### Límite Global
+### Persistencia Independiente
 
-El timestamp `_ultima_publicacion_global` en `posted_ps_deals.json` bloquea ambos:
-- Si ofertas publican → preórdenes bloqueadas 7 días
-- Si preórdenes publican → ofertas bloqueadas 7 días
+Cada flujo mantiene su propio archivo de estado:
+- **Ofertas**: `posted_ps_deals.json` (ventana 96h)
+- **Preórdenes**: `posted_ps_prereservas.json` (ventana 48h)
+- **No hay coordinación de bloqueos**: Ambas pueden publicarse el mismo día
 
 ## 📋 Variables de Configuración
 
@@ -147,7 +148,7 @@ python3 -m pytest ps/tests/ -v
 1. **Disponibilidad real**: La búsqueda solo funcionará si Amazon.es tiene preórdenes reales disponibles
 2. **Patrones flexibles**: La función de detección es robusta y tolerante a variaciones en el HTML
 3. **No bloqueante**: Si no hay preórdenes, simplemente retorna 0 (no afecta otras funciones)
-4. **Coordinación automática**: El sistema de 7 días se coordina automáticamente sin necesidad de locks
+4. **Independencia total**: Preórdenes y ofertas son flujos completamente desacoplados, cada uno con su propia lógica de deduplicación
 
 ## 🎯 Ejemplos de Formato Telegram
 

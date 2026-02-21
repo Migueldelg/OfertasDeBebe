@@ -55,7 +55,10 @@ En paralelo, cada 30 min el canal PS ejecuta:
                           ↓
 4. Publica hasta 3 preórdenes por ciclo
                           ↓
-5. Respeta límite global de 7 días (solo UNA publicación cada 7 días: oferta O preorden)
+5. Respeta ventana de 48h (no repite la misma preorden en 48 horas)
+                          ↓
+6. Funciona INDEPENDIENTEMENTE de las ofertas normales
+   (ambas pueden publicarse el mismo día al mismo canal)
 ```
 
 **Sistema de Agrupamiento de Variantes:**
@@ -97,13 +100,16 @@ Para **crear un nuevo canal** basta con una carpeta que contenga:
 
 ## Sistema Anti-Repetición
 
-Cada canal aplica de forma independiente 5 filtros:
+Cada canal aplica de forma independiente 4 filtros:
 
-- **Anti-ASIN (48h):** No repite el mismo producto en 48 horas
+- **Anti-ASIN Ofertas (96h):** No repite el mismo producto en 96 horas
+- **Anti-ASIN Preórdenes (48h):** No repite la misma preorden en 48 horas (Canal PS)
 - **Anti-Variante:** Cuando agrupa variantes, guarda todos los ASINs para evitar re-publicar
 - **Anti-Categoría:** Evita las últimas 4 categorías publicadas
 - **Anti-Título Similar:** En categorías configuradas, evita títulos con >50% palabras comunes
 - **Límite Semanal:** Categorías configurables para publicarse solo 1 vez por semana
+
+**Nota:** Ofertas y preórdenes del canal PS funcionan de forma completamente independiente (cada una con su propia ventana de deduplicación), por lo que pueden publicarse el mismo día al mismo canal sin bloquearse mutuamente.
 
 ---
 
